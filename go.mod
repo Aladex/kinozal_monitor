@@ -6,6 +6,7 @@ require (
 	github.com/labstack/echo/v4 v4.10.2
 	github.com/mattn/go-sqlite3 v1.14.16
 	golang.org/x/net v0.10.0
+	golang.org/x/text v0.9.0
 	gopkg.in/ini.v1 v1.67.0
 )
 
@@ -18,6 +19,5 @@ require (
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	golang.org/x/crypto v0.6.0 // indirect
 	golang.org/x/sys v0.8.0 // indirect
-	golang.org/x/text v0.9.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 )

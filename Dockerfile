@@ -4,7 +4,7 @@ FROM golang:1.19.5-buster AS build
 COPY . /app
 WORKDIR /app
 # Download dependencies and build
-RUN go mod tidy && go build -buildvcs=false -o kinozal_monitor
+RUN go mod tidy && go build -buildvcs=false -o kinozal_monitor cmd/*
 RUN chmod +x /app/kinozal_monitor  # Make sure the binary is executable
 
 # Set runtime stage
