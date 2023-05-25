@@ -4,13 +4,21 @@ import (
 	"database/sql"
 	_ "github.com/mattn/go-sqlite3"
 	"log"
+	"os"
 )
 
 var DB *sql.DB
 
 // CreateSQLiteDB is a function for creating a database
 func CreateSQLiteDB() *sql.DB {
-	db, err := sql.Open("sqlite3", "./kinozal.db")
+	// Create database folder if not exists
+	folderName := "db"
+	err := os.MkdirAll(folderName, 0755)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	db, err := sql.Open("sqlite3", folderName+"/kinozaltv_monitor.db")
 	if err != nil {
 		log.Fatal(err)
 	}
