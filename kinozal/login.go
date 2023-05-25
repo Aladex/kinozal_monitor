@@ -1,8 +1,10 @@
 package kinozal
 
 import (
+	"bytes"
 	"fmt"
 	"golang.org/x/net/html"
+	"golang.org/x/text/encoding/charmap"
 	"io"
 	"kinozaltv_monitor/config"
 	"net/http"
@@ -131,6 +133,49 @@ func (t *TrackerUser) DownloadTorrentFile(originalUrl string) ([]byte, error) {
 	}
 
 	return body, nil
+}
+
+func (t *TrackerUser) GetTitleFromUrl(originalUrl string) (string, error) {
+	req, err := http.NewRequest("GET", originalUrl, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", userAgent)
+
+	resp, err := t.Client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	// Read title of the page
+	doc, err := html.Parse(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	var title string
+	var f func(*html.Node)
+	f = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "title" {
+			title = n.FirstChild.Data
+			return
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			f(c)
+		}
+	}
+	f(doc)
+
+	// Original title is in 1251 encoding so we need to convert it to utf-8
+	buf := bytes.NewBuffer([]byte(title))
+	decoder := charmap.Windows1251.NewDecoder()
+	decodedTitle, err := decoder.Bytes(buf.Bytes())
+	if err != nil {
+		return "", err
+	}
+
+	return string(decodedTitle), nil
 }
 
 func init() {

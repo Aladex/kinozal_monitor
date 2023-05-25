@@ -2,21 +2,21 @@ package database
 
 import (
 	"database/sql"
-	"fmt"
 	"kinozaltv_monitor/kinozal"
 )
 
 // Torrent is a struct for storing torrent data from the database
 type Torrent struct {
-	ID   int    `json:"id"`
-	Name string `json:"name"`
-	Hash string `json:"hash"`
-	Url  string `json:"url"`
+	ID    int    `json:"id"`
+	Title string `json:"title"`
+	Name  string `json:"name"`
+	Hash  string `json:"hash"`
+	Url   string `json:"url"`
 }
 
 // GetAllRecords is a function for getting all torrents records from the database
 func GetAllRecords(db *sql.DB) ([]Torrent, error) {
-	rows, err := db.Query("SELECT id, name, hash, url FROM torrents")
+	rows, err := db.Query("SELECT id, title, name, hash, url FROM torrents")
 	if err != nil {
 		return nil, err
 	}
@@ -25,7 +25,7 @@ func GetAllRecords(db *sql.DB) ([]Torrent, error) {
 	records := make([]Torrent, 0)
 	for rows.Next() {
 		var r Torrent
-		if err := rows.Scan(&r.ID, &r.Name, &r.Hash, &r.Url); err != nil {
+		if err := rows.Scan(&r.ID, &r.Title, &r.Name, &r.Hash, &r.Url); err != nil {
 			return nil, err
 		}
 		records = append(records, r)
@@ -38,10 +38,36 @@ func GetAllRecords(db *sql.DB) ([]Torrent, error) {
 	return records, nil
 }
 
+// CreateOrUpdateRecord is a function for creating or updating a torrent record in the database
+func CreateOrUpdateRecord(db *sql.DB, torrentInfo kinozal.KinozalTorrent) error {
+	// Check if torrent exists in the sqlite database
+	var hash string
+	err := db.QueryRow("SELECT hash FROM torrents WHERE url = ?", torrentInfo.Url).Scan(&hash)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// Add torrent to the database
+			err = AddRecord(db, torrentInfo)
+			if err != nil {
+				return err
+			}
+			return nil
+		}
+		return err
+	} else {
+		// Update torrent in the database
+		err = UpdateRecord(db, torrentInfo)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+
+	return nil
+}
+
 // AddRecord is a function for adding a torrent record to the database
 func AddRecord(db *sql.DB, torrentInfo kinozal.KinozalTorrent) error {
-	fmt.Println(torrentInfo)
-	_, err := db.Exec("INSERT INTO torrents (name, hash, url) VALUES (?, ?, ?)", torrentInfo.Name, torrentInfo.Hash, torrentInfo.Url)
+	_, err := db.Exec("INSERT INTO torrents (title, name, hash, url) VALUES (?, ?, ?, ?)", torrentInfo.Title, torrentInfo.Name, torrentInfo.Hash, torrentInfo.Url)
 	if err != nil {
 		return err
 	}
@@ -58,9 +84,9 @@ func DeleteRecord(db *sql.DB, url string) error {
 	return nil
 }
 
-// UpdateRecord is a function for updating hash for a torrent record in the database
+// UpdateRecord is a function for updating hash and title for a torrent record in the database
 func UpdateRecord(db *sql.DB, torrentInfo kinozal.KinozalTorrent) error {
-	_, err := db.Exec("UPDATE torrents SET hash = ? WHERE url = ?", torrentInfo.Hash, torrentInfo.Url)
+	_, err := db.Exec("UPDATE torrents SET hash = ?, title = ? WHERE url = ?", torrentInfo.Hash, torrentInfo.Title, torrentInfo.Url)
 	if err != nil {
 		return err
 	}

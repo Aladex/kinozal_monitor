@@ -8,9 +8,10 @@ import (
 
 // KinozalTorrent is a struct for storing torrent data
 type KinozalTorrent struct {
-	Hash string
-	Name string
-	Url  string
+	Title string
+	Hash  string
+	Name  string
+	Url   string
 }
 
 // GetTorrentHash is a method for getting torrent hash from kinozal.tv

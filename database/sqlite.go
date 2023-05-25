@@ -17,6 +17,7 @@ func CreateSQLiteDB() *sql.DB {
 
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS torrents (
 		id INTEGER PRIMARY KEY,
+		title TEXT,
 		name TEXT,
 		hash TEXT,
 		url  TEXT

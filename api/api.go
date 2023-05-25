@@ -2,9 +2,12 @@ package api
 
 import (
 	"github.com/labstack/echo/v4"
+	"kinozaltv_monitor/config"
 	"kinozaltv_monitor/database"
 	"kinozaltv_monitor/kinozal"
 	"kinozaltv_monitor/qbittorrent"
+	"kinozaltv_monitor/telegram"
+	"log"
 )
 
 // AddTorrentUrl is a function for adding a torrent by url
@@ -24,15 +27,24 @@ func AddTorrentUrl(c echo.Context) error {
 		return c.JSON(500, map[string]string{"error": err.Error()})
 	}
 
+	// Get title from original url
+	title, err := kinozal.KinozalUser.GetTitleFromUrl(url)
+	if err != nil {
+		return c.JSON(500, map[string]string{"error": err.Error()})
+	}
+
+	// Set title to torrentInfo
+	torrentInfo.Title = title
+
 	// Add torrent to database
-	err = database.AddRecord(database.DB, torrentInfo)
+	err = database.CreateOrUpdateRecord(database.DB, torrentInfo)
 	if err != nil {
 		// Return 500 Internal Server Error
 		return c.JSON(500, map[string]string{"error": err.Error()})
 	}
 
 	for _, hash := range torrentHashList {
-		if hash == torrentInfo.Hash {
+		if hash.Hash == torrentInfo.Hash {
 			// Return 409 Conflict
 			return c.JSON(200, map[string]string{"status": "ok"})
 		}
@@ -50,6 +62,14 @@ func AddTorrentUrl(c echo.Context) error {
 		// Return 500 Internal Server Error
 		return c.JSON(500, map[string]string{"error": err.Error()})
 	}
+
+	// Send telegram message about adding torrent in goroutine
+	go func() {
+		err = telegram.SendTorrentAction("added", config.GlobalConfig.TelegramToken, torrentInfo)
+		if err != nil {
+			log.Println(err)
+		}
+	}()
 
 	return c.JSON(200, map[string]string{"status": "ok"})
 }
@@ -78,6 +98,7 @@ func RemoveTorrentUrl(c echo.Context) error {
 		// Return 500 Internal Server Error
 		return c.JSON(500, map[string]string{"error": err.Error()})
 	}
+
 	return c.JSON(200, map[string]string{"status": "ok"})
 }
 

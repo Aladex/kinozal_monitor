@@ -44,7 +44,7 @@ func (qb *QbittorrentUser) Login() error {
 }
 
 // GetTorrentHashList is a method for getting a list of torrent hashes
-func (qb *QbittorrentUser) GetTorrentHashList() ([]string, error) {
+func (qb *QbittorrentUser) GetTorrentHashList() ([]Torrent, error) {
 	// Get torrent list
 	resp, err := qb.Client.Get(config.GlobalConfig.QBUrl + "/api/v2/torrents/info?filter=all")
 	if err != nil {
@@ -58,13 +58,7 @@ func (qb *QbittorrentUser) GetTorrentHashList() ([]string, error) {
 		return nil, err
 	}
 
-	// Get torrent hash list
-	var torrentHashList []string
-	for _, torrent := range torrents {
-		torrentHashList = append(torrentHashList, torrent.Hash)
-	}
-
-	return torrentHashList, nil
+	return torrents, nil
 }
 
 // AddTorrent is a method for adding a torrent to the client
