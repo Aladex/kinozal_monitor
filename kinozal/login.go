@@ -7,11 +7,14 @@ import (
 	"golang.org/x/text/encoding/charmap"
 	"io"
 	"kinozaltv_monitor/config"
+	logger "kinozaltv_monitor/logging"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
 	"strings"
 )
+
+var log = logger.New("kinozal_package")
 
 var (
 	baseURL   = "https://kinozal.tv"
@@ -71,7 +74,7 @@ func (t *TrackerUser) Login() error {
 		if n.Type == html.ElementNode && n.Data == "div" {
 			for _, a := range n.Attr {
 				if a.Key == "class" && a.Val == "red" && strings.Contains(n.FirstChild.Data, "Неверно указан пароль") {
-					fmt.Println("Login failed")
+					log.Info("kinozal_login", fmt.Sprintf("Wrong password for user %s", t.Username), nil)
 					return
 				}
 			}
@@ -126,16 +129,19 @@ func CheckBodyIsTorrentFile(body []byte) bool {
 func (t *TrackerUser) DownloadTorrentFile(originalUrl string) ([]byte, error) {
 	downloadUrl, err := generateUrl(originalUrl, "download")
 	if err != nil {
+		log.Error("kinozal_download_torrent_file", "Error while generating download url", map[string]string{"error": err.Error()})
 		return nil, err
 	}
 	req, err := http.NewRequest("GET", downloadUrl, nil)
 	if err != nil {
+		log.Error("kinozal_download_torrent_file", "Error while creating new request", map[string]string{"error": err.Error()})
 		return nil, err
 	}
 	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := t.Client.Do(req)
 	if err != nil {
+		log.Error("kinozal_download_torrent_file", "Error while sending request", map[string]string{"error": err.Error()})
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -143,6 +149,7 @@ func (t *TrackerUser) DownloadTorrentFile(originalUrl string) ([]byte, error) {
 	// Read response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		log.Error("kinozal_download_torrent_file", "Error while reading response body", map[string]string{"error": err.Error()})
 		return nil, err
 	}
 
@@ -163,6 +170,7 @@ func (t *TrackerUser) GetTitleFromUrl(originalUrl string) (string, error) {
 
 	resp, err := t.Client.Do(req)
 	if err != nil {
+		log.Error("kinozal_get_title_from_url", "Error while sending request", map[string]string{"error": err.Error()})
 		return "", err
 	}
 	defer resp.Body.Close()
@@ -170,6 +178,7 @@ func (t *TrackerUser) GetTitleFromUrl(originalUrl string) (string, error) {
 	// Read title of the page
 	doc, err := html.Parse(resp.Body)
 	if err != nil {
+		log.Error("kinozal_get_title_from_url", "Error while parsing html", map[string]string{"error": err.Error()})
 		return "", err
 	}
 
@@ -191,6 +200,7 @@ func (t *TrackerUser) GetTitleFromUrl(originalUrl string) (string, error) {
 	decoder := charmap.Windows1251.NewDecoder()
 	decodedTitle, err := decoder.Bytes(buf.Bytes())
 	if err != nil {
+		log.Error("kinozal_get_title_from_url", "Error while decoding title", map[string]string{"error": err.Error()})
 		return "", err
 	}
 
@@ -208,4 +218,5 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
+	log.Info("kinozal_init", "Kinozal user logged in", nil)
 }

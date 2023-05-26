@@ -10,14 +10,20 @@ import (
 )
 
 func main() {
-	// Run gorooutine for checking torrents in the database and on the tracker
-	go qbittorrent.TorrentChecker()
 
 	e := echo.New()
-
+	e.HideBanner = true
+	// Set CORS to allow all origins
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins: []string{"*"},
+	}))
 	// Middleware
 	e.Use(middleware.Logger())
+
 	e.Use(middleware.Recover())
+
+	// Run gorooutine for checking torrents in the database and on the tracker
+	go qbittorrent.TorrentChecker()
 
 	var contentHandler = echo.WrapHandler(http.FileServer(http.FS(assets.Assets)))
 	var contentRewrite = middleware.Rewrite(map[string]string{"/*": "/frontend/$1"})

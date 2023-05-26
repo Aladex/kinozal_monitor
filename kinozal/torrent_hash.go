@@ -26,18 +26,21 @@ func (t *TrackerUser) GetTorrentHash(url string) (KinozalTorrent, error) {
 	}
 	req, err := http.NewRequest("GET", detailedUrl, nil)
 	if err != nil {
+		log.Error("kinozal_get_torrent_hash", err.Error(), map[string]string{"url": url})
 		return kzTorrent, err
 	}
 	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := t.Client.Do(req)
 	if err != nil {
+		log.Error("kinozal_get_torrent_hash", err.Error(), map[string]string{"url": url})
 		return kzTorrent, err
 	}
 	defer resp.Body.Close()
 
 	doc, err := html.Parse(resp.Body)
 	if err != nil {
+		log.Error("kinozal_get_torrent_hash", err.Error(), map[string]string{"url": url})
 		return kzTorrent, err
 	}
 
@@ -72,6 +75,7 @@ func (t *TrackerUser) GetTorrentHash(url string) (KinozalTorrent, error) {
 		t.DropLoginSession()
 		err = t.Login()
 		if err != nil {
+			log.Error("kinozal_relogin", err.Error(), map[string]string{"url": url})
 			return kzTorrent, err
 		}
 		return t.GetTorrentHash(url)
