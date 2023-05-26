@@ -31,7 +31,7 @@ func loadConfig() error {
 
 	configFieldMap := map[string]map[string]*string{
 		"app": {
-			"APP_PORT": &GlobalConfig.ListenPort,
+			"LISTEN_PORT": &GlobalConfig.ListenPort,
 		},
 		"qbittorrent": {
 			"QB_USERNAME": &GlobalConfig.QBUsername,
