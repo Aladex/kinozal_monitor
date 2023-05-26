@@ -4,6 +4,7 @@ import (
 	"gopkg.in/ini.v1"
 	"log"
 	"os"
+	"strings"
 )
 
 type AppConfig struct {
@@ -14,38 +15,64 @@ type AppConfig struct {
 	KinozalPassword string
 	TelegramChatId  string
 	TelegramToken   string
+	ListenPort      string
 }
 
 // GlobalConfig is a global variable for storing user data
 var GlobalConfig *AppConfig
 
-func loadConfig(user *AppConfig) error {
+func loadConfig() error {
 	cfg, err := ini.Load("config.ini")
 	if err != nil {
 		log.Printf("Fail to read file: %v", err)
-		user.QBUsername = os.Getenv("QB_USERNAME")
-		user.QBPassword = os.Getenv("QB_PASSWORD")
-		user.QBUrl = os.Getenv("QB_URL")
-		user.KinozalUsername = os.Getenv("KZ_USERNAME")
-		user.KinozalPassword = os.Getenv("KZ_PASSWORD")
-		user.TelegramChatId = os.Getenv("TG_CHAT_ID")
-		user.TelegramToken = os.Getenv("TG_TOKEN")
 	} else {
 		log.Println("Config loaded")
-		user.QBUsername = cfg.Section("qbittorrent").Key("username").String()
-		user.QBPassword = cfg.Section("qbittorrent").Key("password").String()
-		user.QBUrl = cfg.Section("qbittorrent").Key("url").String()
-		user.KinozalUsername = cfg.Section("kinozal").Key("username").String()
-		user.KinozalPassword = cfg.Section("kinozal").Key("password").String()
-		user.TelegramChatId = cfg.Section("telegram").Key("chat_id").String()
-		user.TelegramToken = cfg.Section("telegram").Key("token").String()
+	}
+
+	configFieldMap := map[string]map[string]*string{
+		"app": {
+			"APP_PORT": &GlobalConfig.ListenPort,
+		},
+		"qbittorrent": {
+			"QB_USERNAME": &GlobalConfig.QBUsername,
+			"QB_PASSWORD": &GlobalConfig.QBPassword,
+			"QB_URL":      &GlobalConfig.QBUrl,
+		},
+		"kinozal": {
+			"KZ_USERNAME": &GlobalConfig.KinozalUsername,
+			"KZ_PASSWORD": &GlobalConfig.KinozalPassword,
+		},
+		"telegram": {
+			"TG_ID":    &GlobalConfig.TelegramChatId,
+			"TG_TOKEN": &GlobalConfig.TelegramToken,
+		},
+	}
+
+	defaultValues := map[string]string{
+		"LISTEN_PORT": "1323",
+	}
+
+	for section, fields := range configFieldMap {
+		for key, field := range fields {
+			iniKey := strings.ToLower(strings.Split(key, "_")[1])
+			iniValue := cfg.Section(section).Key(iniKey).String()
+			envValue := os.Getenv(key)
+
+			if envValue != "" {
+				*field = envValue
+			} else if iniValue != "" {
+				*field = iniValue
+			} else {
+				*field = defaultValues[key]
+			}
+		}
 	}
 	return nil
 }
 
 func init() {
 	GlobalConfig = &AppConfig{}
-	err := loadConfig(GlobalConfig)
+	err := loadConfig()
 	if err != nil {
 		panic(err)
 	}

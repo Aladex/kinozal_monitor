@@ -5,9 +5,12 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	assets "kinozaltv_monitor"
 	"kinozaltv_monitor/api"
+	"kinozaltv_monitor/config"
 	"kinozaltv_monitor/qbittorrent"
 	"net/http"
 )
+
+var globalConfig = config.GlobalConfig
 
 func main() {
 
@@ -32,5 +35,5 @@ func main() {
 	e.POST("/api/add", api.AddTorrentUrl)
 	e.DELETE("/api/remove", api.RemoveTorrentUrl)
 
-	e.Logger.Fatal(e.Start(":1323"))
+	e.Logger.Fatal(e.Start(":" + globalConfig.ListenPort))
 }

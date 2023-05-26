@@ -10,25 +10,29 @@ import (
 	"log"
 )
 
+var kzUser = kinozal.KinozalUser
+var qbUser = qbittorrent.GlobalQbittorrentUser
+var globalConfig = config.GlobalConfig
+
 // AddTorrentUrl is a function for adding a torrent by url
 func AddTorrentUrl(c echo.Context) error {
 	// Get url from request body by POST method
 	url := c.FormValue("url")
 	// Get hash from kinozal.tv
-	torrentInfo, err := kinozal.KinozalUser.GetTorrentHash(url)
+	torrentInfo, err := kzUser.GetTorrentHash(url)
 	if err != nil {
 		// Return 500 Internal Server Error
 		return c.String(500, err.Error())
 	}
 	// Check if torrent exists in qbittorrent
-	torrentHashList, err := qbittorrent.GlobalQbittorrentUser.GetTorrentHashList()
+	torrentHashList, err := qbUser.GetTorrentHashList()
 	if err != nil {
 		// Return 500 Internal Server Error with json error: {"error": "error message"}
 		return c.JSON(500, map[string]string{"error": err.Error()})
 	}
 
 	// Get title from original url
-	title, err := kinozal.KinozalUser.GetTitleFromUrl(url)
+	title, err := kzUser.GetTitleFromUrl(url)
 	if err != nil {
 		return c.JSON(500, map[string]string{"error": err.Error()})
 	}
@@ -50,14 +54,14 @@ func AddTorrentUrl(c echo.Context) error {
 		}
 	}
 	// Get torrent file from kinozal.tv
-	torrentFile, err := kinozal.KinozalUser.DownloadTorrentFile(url)
+	torrentFile, err := kzUser.DownloadTorrentFile(url)
 	if err != nil {
 		// Return 202 Accepted
 		return c.JSON(202, map[string]string{"status": "ok"})
 	}
 
 	// Add torrent to qbittorrent
-	err = qbittorrent.GlobalQbittorrentUser.AddTorrent(torrentInfo.Hash, torrentFile)
+	err = qbUser.AddTorrent(torrentInfo.Hash, torrentFile)
 	if err != nil {
 		// Return 500 Internal Server Error
 		return c.JSON(500, map[string]string{"error": err.Error()})
@@ -65,7 +69,7 @@ func AddTorrentUrl(c echo.Context) error {
 
 	// Send telegram message about adding torrent in goroutine
 	go func() {
-		err = telegram.SendTorrentAction("added", config.GlobalConfig.TelegramToken, torrentInfo)
+		err = telegram.SendTorrentAction("added", globalConfig.TelegramToken, torrentInfo)
 		if err != nil {
 			log.Println(err)
 		}
@@ -87,7 +91,7 @@ func RemoveTorrentUrl(c echo.Context) error {
 	torrentUrl := json["url"]
 	torrentHash := json["hash"]
 	// Delete torrent from qbittorrent by name
-	err = qbittorrent.GlobalQbittorrentUser.DeleteTorrent(torrentHash, true)
+	err = qbUser.DeleteTorrent(torrentHash, true)
 	if err != nil {
 		// Return 500 Internal Server Error
 		return c.JSON(500, map[string]string{"error": err.Error()})

@@ -10,6 +10,8 @@ import (
 	"net/url"
 )
 
+var globalConfig = config.GlobalConfig
+
 // QbittorrentUser is a struct for storing user data
 type QbittorrentUser struct {
 	Username string
@@ -33,7 +35,7 @@ func (qb *QbittorrentUser) Login() error {
 		Jar: jar,
 	}
 
-	resp, err := qb.Client.PostForm(config.GlobalConfig.QBUrl+"/api/v2/auth/login",
+	resp, err := qb.Client.PostForm(globalConfig.QBUrl+"/api/v2/auth/login",
 		url.Values{"username": {qb.Username}, "password": {qb.Password}})
 	if err != nil {
 		return err
@@ -54,7 +56,7 @@ func (qb *QbittorrentUser) DropLoginSession() error {
 // GetTorrentHashList is a method for getting a list of torrent hashes
 func (qb *QbittorrentUser) GetTorrentHashList() ([]Torrent, error) {
 	// Get torrent list
-	resp, err := qb.Client.Get(config.GlobalConfig.QBUrl + "/api/v2/torrents/info?filter=all")
+	resp, err := qb.Client.Get(globalConfig.QBUrl + "/api/v2/torrents/info?filter=all")
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +88,7 @@ func (qb *QbittorrentUser) AddTorrent(hash string, torrent []byte) error {
 		return err
 	}
 
-	req, err := http.NewRequest("POST", config.GlobalConfig.QBUrl+"/api/v2/torrents/add", body)
+	req, err := http.NewRequest("POST", globalConfig.QBUrl+"/api/v2/torrents/add", body)
 	if err != nil {
 		return err
 	}
@@ -114,7 +116,7 @@ func (qb *QbittorrentUser) DeleteTorrent(hash string, dropFiles bool) error {
 	}
 
 	// POST to api/v2/torrents/delete
-	resp, err := qb.Client.PostForm(config.GlobalConfig.QBUrl+"/api/v2/torrents/delete",
+	resp, err := qb.Client.PostForm(globalConfig.QBUrl+"/api/v2/torrents/delete",
 		url.Values{"hashes": {hash}, "deleteFiles": {dropFilesString}})
 	if err != nil {
 		return err
@@ -127,7 +129,7 @@ func (qb *QbittorrentUser) DeleteTorrent(hash string, dropFiles bool) error {
 // DeleteTorrentByName is a method for deleting a torrent by name
 func (qb *QbittorrentUser) DeleteTorrentByName(torrentName string, dropFiles bool) error {
 	// Find torrent by name
-	resp, err := qb.Client.Get(config.GlobalConfig.QBUrl + "/api/v2/torrents/info?filter=all")
+	resp, err := qb.Client.Get(globalConfig.QBUrl + "/api/v2/torrents/info?filter=all")
 	if err != nil {
 		return err
 	}
@@ -157,7 +159,7 @@ func (qb *QbittorrentUser) DeleteTorrentByName(torrentName string, dropFiles boo
 	}
 
 	// POST to api/v2/torrents/delete with hash as form value
-	resp, err = qb.Client.PostForm(config.GlobalConfig.QBUrl+"/api/v2/torrents/delete",
+	resp, err = qb.Client.PostForm(globalConfig.QBUrl+"/api/v2/torrents/delete",
 		url.Values{"hashes": {torrentHash}, "deleteFiles": {dropFilesString}})
 
 	if err != nil {
@@ -170,8 +172,8 @@ func (qb *QbittorrentUser) DeleteTorrentByName(torrentName string, dropFiles boo
 func init() {
 	// Initialize user
 	GlobalQbittorrentUser = &QbittorrentUser{
-		Username: config.GlobalConfig.QBUsername,
-		Password: config.GlobalConfig.QBPassword,
+		Username: globalConfig.QBUsername,
+		Password: globalConfig.QBPassword,
 	}
 
 	err := GlobalQbittorrentUser.Login()

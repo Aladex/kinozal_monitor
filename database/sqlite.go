@@ -18,7 +18,7 @@ func CreateSQLiteDB() *sql.DB {
 		log.Fatal(err)
 	}
 
-	db, err := sql.Open("sqlite3", folderName+"/kinozaltv_monitor.db")
+	db, err := sql.Open("sqlite3", "db/kinozaltv_monitor.db")
 	if err != nil {
 		log.Fatal(err)
 	}

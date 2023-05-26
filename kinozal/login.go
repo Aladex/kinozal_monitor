@@ -15,6 +15,7 @@ import (
 )
 
 var log = logger.New("kinozal_package")
+var globalConfig = config.GlobalConfig
 
 var (
 	baseURL   = "https://kinozal.tv"
@@ -216,8 +217,8 @@ func (t *TrackerUser) GetTitleFromUrl(originalUrl string) (string, error) {
 func init() {
 	// Initialize user
 	KinozalUser = &TrackerUser{
-		Username: config.GlobalConfig.KinozalUsername,
-		Password: config.GlobalConfig.KinozalPassword,
+		Username: globalConfig.KinozalUsername,
+		Password: globalConfig.KinozalPassword,
 	}
 
 	err := KinozalUser.Login()

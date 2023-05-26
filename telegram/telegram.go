@@ -20,6 +20,8 @@ const messageTorrentUpdated = `<b>Обновлен торрент</b>
 <b>Хеш:</b> {{ .Hash }}
 <b>Ссылка:</b> {{ .Url }}`
 
+var globalConfig = config.GlobalConfig
+
 // BaseChat is a base chat interface
 type BaseChat struct {
 	ChatID    string `json:"chat_id"`
@@ -89,7 +91,7 @@ func SendTorrentAction(action, token string, torrentInfo kinozal.KinozalTorrent)
 		}
 	}
 
-	m := NewBaseChat(config.GlobalConfig.TelegramChatId, tpl.String())
+	m := NewBaseChat(globalConfig.TelegramChatId, tpl.String())
 
 	return SendCommand(token, m)
 }
@@ -105,7 +107,7 @@ func SendTorrentUpdated(token string, torrentInfo kinozal.KinozalTorrent) error 
 	if err != nil {
 		return err
 	}
-	m := NewBaseChat(config.GlobalConfig.TelegramChatId, tpl.String())
+	m := NewBaseChat(globalConfig.TelegramChatId, tpl.String())
 
 	return SendCommand(token, m)
 }
