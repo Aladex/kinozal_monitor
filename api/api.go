@@ -5,14 +5,15 @@ import (
 	"kinozaltv_monitor/config"
 	"kinozaltv_monitor/database"
 	"kinozaltv_monitor/kinozal"
+	logger "kinozaltv_monitor/logging"
 	"kinozaltv_monitor/qbittorrent"
 	"kinozaltv_monitor/telegram"
-	"log"
 )
 
 var kzUser = kinozal.KinozalUser
 var qbUser = qbittorrent.GlobalQbittorrentUser
 var globalConfig = config.GlobalConfig
+var log = logger.New("api")
 
 // AddTorrentUrl is a function for adding a torrent by url
 func AddTorrentUrl(c echo.Context) error {
@@ -56,6 +57,11 @@ func AddTorrentUrl(c echo.Context) error {
 	// Get torrent file from kinozal.tv
 	torrentFile, err := kzUser.DownloadTorrentFile(url)
 	if err != nil {
+		log.Info("download_torrent_file", err.Error(), map[string]string{
+			"torrent_url": url,
+			"reason":      "torrent file not found",
+			"result":      "try to add by magnet link",
+		})
 		// Add torrent by magnet
 		err = qbUser.AddTorrentByMagnet(torrentInfo.Hash)
 		if err != nil {
@@ -75,7 +81,7 @@ func AddTorrentUrl(c echo.Context) error {
 	go func() {
 		err = telegram.SendTorrentAction("added", globalConfig.TelegramToken, torrentInfo)
 		if err != nil {
-			log.Println(err)
+			log.Error("send_telegram_message", err.Error(), nil)
 		}
 	}()
 

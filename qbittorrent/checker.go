@@ -99,6 +99,12 @@ func contains(s []Torrent, e string) bool {
 func addTorrentToQbittorrent(dbTorrent Torrent) bool {
 	torrentFile, err := kzUser.DownloadTorrentFile(dbTorrent.Url)
 	if err != nil {
+		log.Info("download_torrent_file", err.Error(), map[string]string{
+			"torrent_url": dbTorrent.Url,
+			"reason":      "torrent file not found",
+			"result":      "try to add by magnet link",
+		})
+
 		// Add torrent my magnet link
 		err = GlobalQbittorrentUser.AddTorrentByMagnet(dbTorrent.Hash)
 		if err != nil {
