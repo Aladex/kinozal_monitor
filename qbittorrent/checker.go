@@ -88,6 +88,13 @@ func TorrentChecker() {
 						if err != nil {
 							log.Println(err)
 							continue
+						} else {
+							// Send notification to telegram
+							err = telegram.SendTorrentAction("added", config.GlobalConfig.TelegramToken, torrentInfo)
+							if err != nil {
+								log.Println(err)
+								continue
+							}
 						}
 					}
 
