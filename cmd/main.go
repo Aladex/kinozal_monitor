@@ -13,10 +13,7 @@ func main() {
 
 	e := echo.New()
 	e.HideBanner = true
-	// Set CORS to allow all origins
-	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins: []string{"*"},
-	}))
+
 	// Middleware
 	e.Use(middleware.Logger())
 

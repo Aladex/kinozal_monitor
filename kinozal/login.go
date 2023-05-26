@@ -99,6 +99,12 @@ func generateUrl(originalURL, linkType string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
+	// if query have no id parameter, then return error
+	if u.Query().Get("id") == "" {
+		return "", fmt.Errorf("query have no id parameter")
+	}
+
 	switch linkType {
 	case "details":
 		u.Path = "/get_srv_details.php"
