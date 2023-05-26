@@ -54,16 +54,26 @@ func loadConfig() error {
 
 	for section, fields := range configFieldMap {
 		for key, field := range fields {
-			iniKey := strings.ToLower(strings.Split(key, "_")[1])
-			iniValue := cfg.Section(section).Key(iniKey).String()
-			envValue := os.Getenv(key)
+			if err == nil {
+				iniKey := strings.ToLower(strings.Split(key, "_")[1])
+				iniValue := cfg.Section(section).Key(iniKey).String()
+				envValue := os.Getenv(key)
 
-			if envValue != "" {
-				*field = envValue
-			} else if iniValue != "" {
-				*field = iniValue
+				if envValue != "" {
+					*field = envValue
+				} else if iniValue != "" {
+					*field = iniValue
+				} else {
+					*field = defaultValues[key]
+				}
 			} else {
-				*field = defaultValues[key]
+				// If config.ini not found, use environment variables
+				envValue := os.Getenv(key)
+				if envValue != "" {
+					*field = envValue
+				} else {
+					*field = defaultValues[key]
+				}
 			}
 		}
 	}
