@@ -105,6 +105,20 @@ func (qb *QbittorrentUser) AddTorrent(hash string, torrent []byte) error {
 	return nil
 }
 
+func (qb *QbittorrentUser) AddTorrentByMagnet(hash string) error {
+	// Convert hash to magnet
+	magnet := "magnet:?xt=urn:btih:" + hash
+	// Add torrent by magnet
+	resp, err := qb.Client.PostForm(globalConfig.QBUrl+"/api/v2/torrents/add",
+		url.Values{"urls": {magnet}})
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+
+	return nil
+}
+
 // DeleteTorrent is a method for deleting a torrent by hash
 func (qb *QbittorrentUser) DeleteTorrent(hash string, dropFiles bool) error {
 	// Convert dropFiles to string

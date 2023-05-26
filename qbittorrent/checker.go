@@ -11,57 +11,66 @@ import (
 var log = logger.New("qbittorrent")
 var kzUser = kinozal.KinozalUser
 
-// TorrentChecker for checking torrents in the database and on the tracker
-func TorrentChecker() {
-	log.Info("info", "Checker started", nil)
-	ticker := time.NewTicker(time.Minute * 10)
-
+func torrentWorker() {
 	for {
-		select {
-		case <-ticker.C:
-			// Get torrent list from database
-			dbTorrents, err := database.GetAllRecords(database.DB)
-			if err != nil {
-				log.Error("get_db_records", err.Error(), nil)
-				continue
+		// Get torrent list from database
+		dbTorrents, err := database.GetAllRecords(database.DB)
+		if err != nil {
+			log.Error("get_db_records", err.Error(), nil)
+			continue
+		}
+
+		// Get torrent list from qbittorrent
+		qbTorrents, err := GlobalQbittorrentUser.GetTorrentHashList()
+		if err != nil {
+			log.Error("get_qb_torrents", err.Error(), nil)
+			handleQbittorrentError(err)
+			continue
+		}
+
+		for _, dbTorrent := range dbTorrents {
+			qbTorrent := Torrent{
+				Hash: dbTorrent.Hash,
+				Name: dbTorrent.Name,
+				Url:  dbTorrent.Url,
 			}
-
-			// Get torrent list from qbittorrent
-			qbTorrents, err := GlobalQbittorrentUser.GetTorrentHashList()
-			if err != nil {
-				log.Error("get_qb_torrents", err.Error(), nil)
-				handleQbittorrentError(err)
-				continue
-			}
-
-			for _, dbTorrent := range dbTorrents {
-				qbTorrent := Torrent{
-					Hash: dbTorrent.Hash,
-					Name: dbTorrent.Name,
-					Url:  dbTorrent.Url,
-				}
-				if !contains(qbTorrents, dbTorrent.Hash) {
-					if !addTorrentToQbittorrent(qbTorrent) {
-						continue
-					}
-				}
-
-				// Get torrent info from kinozal.tv
-				torrentInfo, err := kzUser.GetTorrentHash(dbTorrent.Url)
-				if err != nil {
-					log.Error("get_torrent_info", err.Error(), nil)
+			if !contains(qbTorrents, dbTorrent.Hash) {
+				if !addTorrentToQbittorrent(qbTorrent) {
 					continue
 				}
+			}
 
-				// If hash is not equal then update torrent
-				if torrentInfo.Hash != dbTorrent.Hash {
-					if !updateTorrentInQbittorrent(qbTorrent, torrentInfo) {
-						continue
-					}
+			// Get torrent info from kinozal.tv
+			torrentInfo, err := kzUser.GetTorrentHash(dbTorrent.Url)
+			if err != nil {
+				log.Error("get_torrent_info", err.Error(), nil)
+				continue
+			}
+
+			// If hash is not equal then update torrent
+			if torrentInfo.Hash != dbTorrent.Hash {
+				if !updateTorrentInQbittorrent(qbTorrent, torrentInfo) {
+					continue
 				}
 			}
 		}
 	}
+}
+
+// TorrentChecker for checking torrents in the database and on the tracker
+func TorrentChecker() {
+	log.Info("info", "Checker started", nil)
+
+	torrentWorker()
+
+	ticker := time.NewTicker(time.Minute * 10)
+	for {
+		select {
+		case <-ticker.C:
+			torrentWorker()
+		}
+	}
+
 }
 
 func handleQbittorrentError(err error) {
@@ -90,16 +99,18 @@ func contains(s []Torrent, e string) bool {
 func addTorrentToQbittorrent(dbTorrent Torrent) bool {
 	torrentFile, err := kzUser.DownloadTorrentFile(dbTorrent.Url)
 	if err != nil {
-		log.Error("download_torrent_file", err.Error(), map[string]string{
-			"torrent_url": dbTorrent.Url,
-		})
-		return false
-	}
-
-	err = GlobalQbittorrentUser.AddTorrent(dbTorrent.Hash, torrentFile)
-	if err != nil {
-		log.Error("add_torrent", err.Error(), nil)
-		return false
+		// Add torrent my magnet link
+		err = GlobalQbittorrentUser.AddTorrentByMagnet(dbTorrent.Hash)
+		if err != nil {
+			log.Error("add_torrent_by_magnet", err.Error(), nil)
+			return false
+		}
+	} else {
+		err = GlobalQbittorrentUser.AddTorrent(dbTorrent.Hash, torrentFile)
+		if err != nil {
+			log.Error("add_torrent", err.Error(), nil)
+			return false
+		}
 	}
 
 	torrentInfo, err := kzUser.GetTorrentHash(dbTorrent.Url)

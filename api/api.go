@@ -56,15 +56,19 @@ func AddTorrentUrl(c echo.Context) error {
 	// Get torrent file from kinozal.tv
 	torrentFile, err := kzUser.DownloadTorrentFile(url)
 	if err != nil {
-		// Return 202 Accepted
-		return c.JSON(202, map[string]string{"status": "ok"})
-	}
-
-	// Add torrent to qbittorrent
-	err = qbUser.AddTorrent(torrentInfo.Hash, torrentFile)
-	if err != nil {
-		// Return 500 Internal Server Error
-		return c.JSON(500, map[string]string{"error": err.Error()})
+		// Add torrent by magnet
+		err = qbUser.AddTorrentByMagnet(torrentInfo.Hash)
+		if err != nil {
+			// Return 500 Internal Server Error
+			return c.JSON(500, map[string]string{"error": err.Error()})
+		}
+	} else {
+		// Add torrent to qbittorrent
+		err = qbUser.AddTorrent(torrentInfo.Hash, torrentFile)
+		if err != nil {
+			// Return 500 Internal Server Error
+			return c.JSON(500, map[string]string{"error": err.Error()})
+		}
 	}
 
 	// Send telegram message about adding torrent in goroutine
