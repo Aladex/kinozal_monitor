@@ -52,8 +52,8 @@ func AddTorrentUrl(c echo.Context) error {
 	// Get torrent file from kinozal.tv
 	torrentFile, err := kinozal.KinozalUser.DownloadTorrentFile(url)
 	if err != nil {
-		// Return 500 Internal Server Error
-		return c.JSON(500, map[string]string{"error": err.Error()})
+		// Return 202 Accepted
+		return c.JSON(202, map[string]string{"status": "ok"})
 	}
 
 	// Add torrent to qbittorrent

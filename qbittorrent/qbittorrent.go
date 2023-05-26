@@ -96,6 +96,8 @@ func (qb *QbittorrentUser) AddTorrent(hash string, torrent []byte) error {
 	if err != nil {
 		return err
 	}
+
+	// Print status code
 	resp.Body.Close()
 
 	return nil

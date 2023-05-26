@@ -48,42 +48,23 @@ func TorrentChecker() {
 			continue
 		}
 
-		for _, torrent := range dbTorrents {
+		for _, dbTorrent := range dbTorrents {
 			// if torrent is not in qbittorrent then add it
-			for _, hash := range qbTorrents {
+			for _, qbTorrent := range qbTorrents {
 				// if torrent is in qbittorrent then check it
-				if hash.Url == torrent.Url {
+				if qbTorrent.Hash == dbTorrent.Hash {
 					// Get torrent info from kinozal.tv
-					torrentInfo, err := kinozal.KinozalUser.GetTorrentHash(torrent.Url)
+					torrentInfo, err := kinozal.KinozalUser.GetTorrentHash(dbTorrent.Url)
 					if err != nil {
 						log.Println(err)
 						continue
 					}
 
 					// If hash is not equal then update torrent
-					if torrentInfo.Hash != hash.Hash {
-						// Get torrent file from kinozal.tv
-						torrentFile, err := kinozal.KinozalUser.DownloadTorrentFile(torrent.Url)
-						if err != nil {
-							log.Println(err)
-							continue
-						}
+					if torrentInfo.Hash != dbTorrent.Hash {
 
 						// Remove torrent from qbittorrent
-						err = GlobalQbittorrentUser.DeleteTorrent(hash.Hash, false)
-						if err != nil {
-							log.Println(err)
-							continue
-						}
-						// Add torrent to qbittorrent
-						err = GlobalQbittorrentUser.AddTorrent(torrentInfo.Hash, torrentFile)
-						if err != nil {
-							log.Println(err)
-							continue
-						}
-
-						// Update torrent in database
-						err = database.CreateOrUpdateRecord(database.DB, torrentInfo)
+						err = GlobalQbittorrentUser.DeleteTorrent(dbTorrent.Hash, false)
 						if err != nil {
 							log.Println(err)
 							continue
@@ -96,38 +77,38 @@ func TorrentChecker() {
 							continue
 						}
 					}
+					// Get torrent file from kinozal.tv
+					torrentFile, err := kinozal.KinozalUser.DownloadTorrentFile(dbTorrent.Url)
+					if err != nil {
+						log.Println(err)
+						continue
+					} else {
+						// Add torrent to qbittorrent
+						err = GlobalQbittorrentUser.AddTorrent(dbTorrent.Hash, torrentFile)
+						if err != nil {
+							log.Println(err)
+							continue
+						}
+					}
 
-				}
-				// Get torrent file from kinozal.tv
-				torrentFile, err := kinozal.KinozalUser.DownloadTorrentFile(torrent.Url)
-				if err != nil {
-					log.Println(err)
-					continue
-				}
+					torrentInfo, err = kinozal.KinozalUser.GetTorrentHash(dbTorrent.Url)
+					if err != nil {
+						log.Println(err)
+						continue
+					}
+					// Get title from original url
+					title, err := kinozal.KinozalUser.GetTitleFromUrl(dbTorrent.Url)
+					if err != nil {
+						log.Println(err)
+						continue
+					}
 
-				torrentInfo, err := kinozal.KinozalUser.GetTorrentHash(torrent.Url)
-				if err != nil {
-					log.Println(err)
-					continue
-				}
-				// Get title from original url
-				title, err := kinozal.KinozalUser.GetTitleFromUrl(torrent.Url)
-				if err != nil {
-					log.Println(err)
-					continue
-				}
+					// Set title to torrentInfo
+					torrentInfo.Title = title
 
-				// Set title to torrentInfo
-				torrentInfo.Title = title
-
-				// Add torrent to qbittorrent
-				err = GlobalQbittorrentUser.AddTorrent(torrent.Hash, torrentFile)
-				if err != nil {
-					log.Println(err)
-					continue
+					// Update torrent hash in database
+					err = database.UpdateRecord(database.DB, torrentInfo)
 				}
-				// Update torrent hash in database
-				err = database.UpdateRecord(database.DB, torrentInfo)
 			}
 		}
 

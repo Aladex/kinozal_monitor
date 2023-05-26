@@ -114,6 +114,15 @@ func generateUrl(originalURL, linkType string) (string, error) {
 	return u.String(), nil
 }
 
+// CheckBodyIsTorrentFile is a function for checking if body is torrent file but not html
+func CheckBodyIsTorrentFile(body []byte) bool {
+	// Check if body is html
+	if bytes.Contains(body, []byte("<!DOCTYPE HTML>")) {
+		return false
+	}
+	return true
+}
+
 func (t *TrackerUser) DownloadTorrentFile(originalUrl string) ([]byte, error) {
 	downloadUrl, err := generateUrl(originalUrl, "download")
 	if err != nil {
@@ -135,6 +144,11 @@ func (t *TrackerUser) DownloadTorrentFile(originalUrl string) ([]byte, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
+	}
+
+	// Check if body is html
+	if !CheckBodyIsTorrentFile(body) {
+		return nil, fmt.Errorf("body is not torrent file")
 	}
 
 	return body, nil
