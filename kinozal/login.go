@@ -85,6 +85,11 @@ func (t *TrackerUser) Login() error {
 	return nil
 }
 
+// DropLoginSession is a method for dropping login session by deleting cookies
+func (t *TrackerUser) DropLoginSession() {
+	t.Client.Jar = nil
+}
+
 // generateUrl is a function for generating url for kinozal.tv for different purposes
 func generateUrl(originalURL, linkType string) (string, error) {
 	u, err := url.Parse(originalURL)

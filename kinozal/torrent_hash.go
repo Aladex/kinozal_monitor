@@ -65,5 +65,17 @@ func (t *TrackerUser) GetTorrentHash(url string) (KinozalTorrent, error) {
 
 	f(doc)
 
+	// If hash is empty, then maybe we are not logged in
+	// So we need to drop login session and login again
+	// And try to get hash again
+	if kzTorrent.Hash == "" {
+		t.DropLoginSession()
+		err = t.Login()
+		if err != nil {
+			return kzTorrent, err
+		}
+		return t.GetTorrentHash(url)
+	}
+
 	return kzTorrent, nil
 }

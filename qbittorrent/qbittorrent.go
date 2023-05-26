@@ -43,6 +43,14 @@ func (qb *QbittorrentUser) Login() error {
 	return nil
 }
 
+// DropLoginSession is a method for dropping the login session by deleting the cookie
+func (qb *QbittorrentUser) DropLoginSession() error {
+	// Drop login session
+	qb.Client.Jar = nil
+
+	return nil
+}
+
 // GetTorrentHashList is a method for getting a list of torrent hashes
 func (qb *QbittorrentUser) GetTorrentHashList() ([]Torrent, error) {
 	// Get torrent list

@@ -24,6 +24,26 @@ func TorrentChecker() {
 		qbTorrents, err := GlobalQbittorrentUser.GetTorrentHashList()
 		if err != nil {
 			log.Println(err)
+
+			// If returned Forbidden then try to login
+			if err.Error() == "Forbidden" {
+				// Drop current session
+				err = GlobalQbittorrentUser.DropLoginSession()
+				if err != nil {
+					log.Println(err)
+					time.Sleep(time.Minute * 5)
+					continue
+				}
+
+				// Login
+				err = GlobalQbittorrentUser.Login()
+				if err != nil {
+					log.Println(err)
+					time.Sleep(time.Minute * 5)
+					continue
+				}
+			}
+
 			time.Sleep(time.Minute * 5)
 			continue
 		}
