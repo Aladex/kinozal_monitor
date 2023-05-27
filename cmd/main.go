@@ -31,6 +31,8 @@ func main() {
 	// Set channel for adding torrent by url
 	handler := api.NewApiHandler(qbittorrent.UrlChan)
 	msgPool := api.NewMsgPool(wsChan)
+	// Run ws pool
+	go msgPool.Start()
 
 	go qbittorrent.TorrentChecker(wsChan, qbittorrent.UrlChan)
 
@@ -46,9 +48,6 @@ func main() {
 
 	// Websocket route
 	e.GET("/ws", msgPool.HandleWsConnections)
-
-	// Run ws pool
-	go msgPool.Start()
 
 	e.Logger.Fatal(e.Start(":" + globalConfig.ListenPort))
 }
