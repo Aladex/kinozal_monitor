@@ -23,9 +23,10 @@ var GlobalQbittorrentUser *QbittorrentUser
 
 // Torrent is a struct for storing torrent data
 type Torrent struct {
-	Hash string `json:"hash"`
-	Name string `json:"name"`
-	Url  string `json:"url"`
+	Hash  string `json:"hash"`
+	Title string `json:"title"`
+	Name  string `json:"name"`
+	Url   string `json:"url"`
 }
 
 // Login is a method for logging in to the tracker

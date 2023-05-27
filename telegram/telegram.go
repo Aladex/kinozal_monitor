@@ -95,19 +95,3 @@ func SendTorrentAction(action, token string, torrentInfo kinozal.KinozalTorrent)
 
 	return SendCommand(token, m)
 }
-
-// SendTorrentUpdated sends a message about updated torrent
-func SendTorrentUpdated(token string, torrentInfo kinozal.KinozalTorrent) error {
-	t, err := template.New("updated_torrent").Parse(messageTorrentUpdated)
-	if err != nil {
-		return err
-	}
-	var tpl bytes.Buffer
-	err = t.Execute(&tpl, torrentInfo)
-	if err != nil {
-		return err
-	}
-	m := NewBaseChat(globalConfig.TelegramChatId, tpl.String())
-
-	return SendCommand(token, m)
-}

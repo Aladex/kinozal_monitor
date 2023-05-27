@@ -11,7 +11,6 @@ import (
 var log = logger.New("qbittorrent")
 var kzUser = kinozal.KinozalUser
 var UrlChan = make(chan string, 100)
-var WSChan = make(chan string, 100)
 
 // torrentAdder
 func torrentAdder(url string, wsMsg chan string) {
@@ -114,9 +113,10 @@ func torrentWorker() {
 
 	for _, dbTorrent := range dbTorrents {
 		qbTorrent := Torrent{
-			Hash: dbTorrent.Hash,
-			Name: dbTorrent.Name,
-			Url:  dbTorrent.Url,
+			Hash:  dbTorrent.Hash,
+			Title: dbTorrent.Title,
+			Name:  dbTorrent.Name,
+			Url:   dbTorrent.Url,
 		}
 		if !contains(qbTorrents, dbTorrent.Hash) {
 			if !addTorrentToQbittorrent(qbTorrent) {
@@ -207,6 +207,13 @@ func addTorrentToQbittorrent(dbTorrent Torrent) bool {
 	torrentInfo, err := kzUser.GetTorrentHash(dbTorrent.Url)
 	if err != nil {
 		log.Error("get_torrent_info", err.Error(), nil)
+		return false
+	}
+
+	// Get title from kinozal.tv
+	dbTorrent.Title, err = kzUser.GetTitleFromUrl(dbTorrent.Url)
+	if err != nil {
+		log.Error("get_title_from_url", err.Error(), nil)
 		return false
 	}
 
