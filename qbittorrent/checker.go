@@ -119,7 +119,7 @@ func torrentWorker() {
 			Url:   dbTorrent.Url,
 		}
 		if !contains(qbTorrents, dbTorrent.Hash) {
-			if !addTorrentToQbittorrent(qbTorrent) {
+			if !addTorrentToQbittorrent(qbTorrent, true) {
 				continue
 			}
 		}
@@ -133,6 +133,13 @@ func torrentWorker() {
 
 		// If hash is not equal then update torrent
 		if torrentInfo.Hash != dbTorrent.Hash {
+			// Update title of torrent
+			torrentInfo.Title, err = kzUser.GetTitleFromUrl(dbTorrent.Url)
+			if err != nil {
+				log.Error("get_title_from_url", err.Error(), nil)
+				// Set title from database
+				torrentInfo.Title = dbTorrent.Title
+			}
 			if !updateTorrentInQbittorrent(qbTorrent, torrentInfo) {
 				continue
 			}
@@ -181,7 +188,7 @@ func contains(s []Torrent, e string) bool {
 	return false
 }
 
-func addTorrentToQbittorrent(dbTorrent Torrent) bool {
+func addTorrentToQbittorrent(dbTorrent Torrent, sendTgMessage bool) bool {
 	torrentFile, err := kzUser.DownloadTorrentFile(dbTorrent.Url)
 	if err != nil {
 		log.Info("download_torrent_file", err.Error(), map[string]string{
@@ -217,10 +224,13 @@ func addTorrentToQbittorrent(dbTorrent Torrent) bool {
 		return false
 	}
 
-	err = telegram.SendTorrentAction("added", globalConfig.TelegramToken, torrentInfo)
-	if err != nil {
-		log.Error("send_telegram_notification", err.Error(), nil)
-		return false
+	if sendTgMessage {
+		go func() {
+			err = telegram.SendTorrentAction("added", globalConfig.TelegramToken, torrentInfo)
+			if err != nil {
+				log.Error("send_telegram_notification", err.Error(), nil)
+			}
+		}()
 	}
 
 	return true
@@ -245,5 +255,5 @@ func updateTorrentInQbittorrent(dbTorrent Torrent, torrentInfo kinozal.KinozalTo
 		return false
 	}
 
-	return addTorrentToQbittorrent(dbTorrent)
+	return addTorrentToQbittorrent(dbTorrent, false)
 }
