@@ -65,10 +65,6 @@ func (pool *MsgPool) HandleWsConnections(c echo.Context) error {
 		// Send message to all connections
 		c.Logger().Info("Sending message to all connections: ", msg)
 		pool.SendToAll(msg)
-		if err := ws.WriteMessage(websocket.TextMessage, []byte(msg)); err != nil {
-			c.Logger().Error(err)
-			return err
-		}
 	}
 }
 
