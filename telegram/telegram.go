@@ -12,12 +12,16 @@ import (
 
 const messageTorrentAdded = `<b>Добавлен новый торрент</b>
 <b>Название:</b> {{ .Title }}
+
 <b>Хеш:</b> {{ .Hash }}
+
 <b>Ссылка:</b> {{ .Url }}`
 
 const messageTorrentUpdated = `<b>Обновлен торрент</b>
 <b>Название:</b> {{ .Title }}
+
 <b>Хеш:</b> {{ .Hash }}
+
 <b>Ссылка:</b> {{ .Url }}`
 
 var globalConfig = config.GlobalConfig
