@@ -225,12 +225,11 @@ func addTorrentToQbittorrent(dbTorrent Torrent, sendTgMessage bool) bool {
 	}
 
 	if sendTgMessage {
-		go func() {
-			err = telegram.SendTorrentAction("added", globalConfig.TelegramToken, torrentInfo)
-			if err != nil {
-				log.Error("send_telegram_notification", err.Error(), nil)
-			}
-		}()
+		err = telegram.SendTorrentAction("added", globalConfig.TelegramToken, torrentInfo)
+		if err != nil {
+			log.Error("send_telegram_notification", err.Error(), nil)
+		}
+
 	}
 
 	return true
