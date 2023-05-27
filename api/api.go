@@ -4,11 +4,13 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"kinozaltv_monitor/database"
+	logger "kinozaltv_monitor/logging"
 	"kinozaltv_monitor/qbittorrent"
 	"net/http"
 )
 
 var qbUser = qbittorrent.GlobalQbittorrentUser
+var log = logger.New("api")
 
 var (
 	upgrader = websocket.Upgrader{
@@ -63,7 +65,7 @@ func (pool *MsgPool) HandleWsConnections(c echo.Context) error {
 	for {
 		msg := <-pool.msg
 		// Send message to all connections
-		c.Logger().Info("Sending message to all connections: ", msg)
+		log.Info("Sending message to all connections: ", msg, nil)
 		pool.SendToAll(msg)
 	}
 }
@@ -84,6 +86,7 @@ func (pool *MsgPool) Start() {
 		case message := <-pool.broadcast:
 			for connection := range pool.connections {
 				if err := connection.WriteMessage(websocket.TextMessage, message); err != nil {
+					log.Error("Error during sending message to connection: ", err.Error(), nil)
 					pool.unregister <- connection
 					connection.Close()
 					break
