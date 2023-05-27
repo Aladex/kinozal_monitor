@@ -211,7 +211,7 @@ func addTorrentToQbittorrent(dbTorrent Torrent) bool {
 	}
 
 	// Get title from kinozal.tv
-	dbTorrent.Title, err = kzUser.GetTitleFromUrl(dbTorrent.Url)
+	torrentInfo.Title, err = kzUser.GetTitleFromUrl(dbTorrent.Url)
 	if err != nil {
 		log.Error("get_title_from_url", err.Error(), nil)
 		return false
