@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"os"
 	"strings"
 )
 
@@ -32,6 +33,10 @@ type TrackerUser struct {
 
 // KinozalUser is a global variable for storing user data
 var KinozalUser *TrackerUser
+
+func kinozal1251decoder(r io.Reader) io.Reader {
+	return charmap.Windows1251.NewDecoder().Reader(r)
+}
 
 // Login is a method for logging in to the tracker
 func (t *TrackerUser) Login() error {
@@ -65,17 +70,28 @@ func (t *TrackerUser) Login() error {
 	}
 	defer resp.Body.Close()
 
-	doc, err := html.Parse(resp.Body)
+	// Read response body and decode it from windows-1251 to utf-8
+	body, err := io.ReadAll(kinozal1251decoder(resp.Body))
+	if err != nil {
+		log.Error("kinozal_login", "Error while reading response body", map[string]string{"error": err.Error()})
+		return err
+	}
+
+	// Convert body to Node
+	doc, err := html.Parse(bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
+
+	var loginError error
 
 	var f func(*html.Node)
 	f = func(n *html.Node) {
 		if n.Type == html.ElementNode && n.Data == "div" {
 			for _, a := range n.Attr {
-				if a.Key == "class" && a.Val == "red" && strings.Contains(n.FirstChild.Data, "Неверно указан пароль") {
+				if a.Key == "class" && a.Val == "red" && strings.Contains(n.FirstChild.Data, "Неверно указан пароль для имени") {
 					log.Info("kinozal_login", fmt.Sprintf("Wrong password for user %s", t.Username), nil)
+					loginError = fmt.Errorf("wrong password for user %s on kinozal.tv", t.Username)
 					return
 				}
 			}
@@ -85,6 +101,11 @@ func (t *TrackerUser) Login() error {
 		}
 	}
 	f(doc)
+
+	// If login error is not nil, then return error
+	if loginError != nil {
+		return loginError
+	}
 
 	return nil
 }
@@ -223,7 +244,9 @@ func init() {
 
 	err := KinozalUser.Login()
 	if err != nil {
-		panic(err)
+		log.Error("kinozal_init", "Error while logging in", map[string]string{"error": err.Error()})
+		// If error is not nil, then exit
+		os.Exit(1)
 	}
 	log.Info("kinozal_init", "Kinozal user logged in", nil)
 }

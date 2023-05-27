@@ -10,6 +10,91 @@ import (
 
 var log = logger.New("qbittorrent")
 var kzUser = kinozal.KinozalUser
+var UrlChan = make(chan string, 100)
+var WSChan = make(chan string, 100)
+
+// torrentAdder
+func torrentAdder(url string, wsMsg chan string) {
+	torrentInfo, err := kzUser.GetTorrentHash(url)
+	if err != nil {
+		log.Error("get_torrent_info", err.Error(), nil)
+		// Return 500 Internal Server Error
+		wsMsg <- "500"
+		return
+	}
+	// Check if torrent exists in qbittorrent
+	torrentHashList, err := GlobalQbittorrentUser.GetTorrentHashList()
+	if err != nil {
+		log.Error("get_qb_torrents", err.Error(), nil)
+		wsMsg <- "500"
+		return
+	}
+
+	// Get title from original url
+	title, err := kzUser.GetTitleFromUrl(url)
+	if err != nil {
+		log.Error("get_title_from_url", err.Error(), nil)
+		wsMsg <- "500"
+		return
+	}
+
+	// Set title to torrentInfo
+	torrentInfo.Title = title
+
+	// Add torrent to database
+	err = database.CreateOrUpdateRecord(database.DB, torrentInfo)
+	if err != nil {
+		log.Error("create_or_update_record", err.Error(), nil)
+		wsMsg <- "500"
+		return
+	}
+
+	for _, hash := range torrentHashList {
+		if hash.Hash == torrentInfo.Hash {
+			// Torrent already exists in qbittorrent
+			wsMsg <- "added"
+			return
+		}
+	}
+	// Get torrent file from kinozal.tv
+	torrentFile, err := kzUser.DownloadTorrentFile(url)
+	if err != nil {
+		log.Info("download_torrent_file", err.Error(), map[string]string{
+			"torrent_url": url,
+			"reason":      "torrent file not found",
+			"result":      "try to add by magnet link",
+		})
+		// Add torrent by magnet
+		err = GlobalQbittorrentUser.AddTorrentByMagnet(torrentInfo.Hash)
+		if err != nil {
+			log.Error("add_torrent_by_magnet", err.Error(), nil)
+			wsMsg <- "500"
+			return
+		}
+	} else {
+		// Add torrent to qbittorrent
+		err = GlobalQbittorrentUser.AddTorrent(torrentInfo.Hash, torrentFile)
+		if err != nil {
+			log.Error("add_torrent", err.Error(), nil)
+			wsMsg <- "500"
+			return
+		}
+	}
+
+	// Send telegram message about adding torrent in goroutine
+	go func() {
+		err = telegram.SendTorrentAction("added", globalConfig.TelegramToken, torrentInfo)
+		if err != nil {
+			log.Error("send_telegram_message", err.Error(), nil)
+		}
+	}()
+
+	// Send websocket message about adding torrent
+	log.Info("info", "Torrent added", map[string]string{
+		"torrent_url": url,
+	})
+	wsMsg <- "added"
+}
 
 func torrentWorker() {
 	// Get torrent list from database
@@ -56,7 +141,7 @@ func torrentWorker() {
 }
 
 // TorrentChecker for checking torrents in the database and on the tracker
-func TorrentChecker() {
+func TorrentChecker(wsMsg, url chan string) {
 	log.Info("info", "Checker started", nil)
 
 	torrentWorker()
@@ -66,6 +151,8 @@ func TorrentChecker() {
 		select {
 		case <-ticker.C:
 			torrentWorker()
+		case torrentUrl := <-url:
+			go torrentAdder(torrentUrl, wsMsg)
 		}
 	}
 

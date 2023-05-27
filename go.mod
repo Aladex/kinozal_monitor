@@ -3,6 +3,7 @@ module kinozaltv_monitor
 go 1.19
 
 require (
+	github.com/gorilla/websocket v1.5.0
 	github.com/labstack/echo/v4 v4.10.2
 	github.com/mattn/go-sqlite3 v1.14.16
 	golang.org/x/net v0.10.0

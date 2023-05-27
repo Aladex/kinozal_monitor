@@ -1,89 +1,113 @@
 package api
 
 import (
+	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
-	"kinozaltv_monitor/config"
 	"kinozaltv_monitor/database"
-	"kinozaltv_monitor/kinozal"
-	logger "kinozaltv_monitor/logging"
 	"kinozaltv_monitor/qbittorrent"
-	"kinozaltv_monitor/telegram"
+	"net/http"
 )
 
-var kzUser = kinozal.KinozalUser
 var qbUser = qbittorrent.GlobalQbittorrentUser
-var globalConfig = config.GlobalConfig
-var log = logger.New("api")
+
+var (
+	upgrader = websocket.Upgrader{
+		// Allow all origins
+		CheckOrigin: func(r *http.Request) bool {
+			return true
+		},
+	}
+)
+
+type ApiHandler struct {
+	urlChan chan string
+}
+
+type MsgHandler struct {
+	msg chan string
+}
+
+func NewApiHandler(urlChan chan string) *ApiHandler {
+	return &ApiHandler{
+		urlChan: urlChan,
+	}
+}
+
+type MsgPool struct {
+	connections map[*websocket.Conn]bool
+	register    chan *websocket.Conn
+	unregister  chan *websocket.Conn
+	broadcast   chan []byte
+	msg         chan string
+}
+
+func NewMsgPool(msgChan chan string) *MsgPool {
+	return &MsgPool{
+		broadcast:   make(chan []byte),
+		register:    make(chan *websocket.Conn),
+		unregister:  make(chan *websocket.Conn),
+		connections: make(map[*websocket.Conn]bool),
+		msg:         msgChan,
+	}
+}
+
+func (pool *MsgPool) HandleWsConnections(c echo.Context) error {
+	ws, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
+	if err != nil {
+		return err
+	}
+	defer ws.Close()
+
+	pool.register <- ws
+
+	for {
+		msg := <-pool.msg
+		// Send message to all connections
+		c.Logger().Info("Sending message to all connections: ", msg)
+		pool.SendToAll(msg)
+		if err := ws.WriteMessage(websocket.TextMessage, []byte(msg)); err != nil {
+			c.Logger().Error(err)
+			return err
+		}
+	}
+}
+
+func (pool *MsgPool) SendToAll(msg string) {
+	pool.broadcast <- []byte(msg)
+}
+
+func (pool *MsgPool) Start() {
+	for {
+		select {
+		case connection := <-pool.register:
+			pool.connections[connection] = true
+		case connection := <-pool.unregister:
+			if _, ok := pool.connections[connection]; ok {
+				delete(pool.connections, connection)
+			}
+		case message := <-pool.broadcast:
+			for connection := range pool.connections {
+				if err := connection.WriteMessage(websocket.TextMessage, message); err != nil {
+					pool.unregister <- connection
+					connection.Close()
+					break
+				}
+			}
+		}
+	}
+}
 
 // AddTorrentUrl is a function for adding a torrent by url
-func AddTorrentUrl(c echo.Context) error {
+func (h *ApiHandler) AddTorrentUrl(c echo.Context) error {
 	// Get url from request body by POST method
 	url := c.FormValue("url")
-	// Get hash from kinozal.tv
-	torrentInfo, err := kzUser.GetTorrentHash(url)
-	if err != nil {
-		// Return 500 Internal Server Error
-		return c.String(500, err.Error())
+	// Check if url is empty
+	if url == "" {
+		// Return 400 Bad Request
+		return c.JSON(400, map[string]string{"error": "url is empty"})
 	}
-	// Check if torrent exists in qbittorrent
-	torrentHashList, err := qbUser.GetTorrentHashList()
-	if err != nil {
-		// Return 500 Internal Server Error with json error: {"error": "error message"}
-		return c.JSON(500, map[string]string{"error": err.Error()})
-	}
-
-	// Get title from original url
-	title, err := kzUser.GetTitleFromUrl(url)
-	if err != nil {
-		return c.JSON(500, map[string]string{"error": err.Error()})
-	}
-
-	// Set title to torrentInfo
-	torrentInfo.Title = title
-
-	// Add torrent to database
-	err = database.CreateOrUpdateRecord(database.DB, torrentInfo)
-	if err != nil {
-		// Return 500 Internal Server Error
-		return c.JSON(500, map[string]string{"error": err.Error()})
-	}
-
-	for _, hash := range torrentHashList {
-		if hash.Hash == torrentInfo.Hash {
-			// Return 409 Conflict
-			return c.JSON(200, map[string]string{"status": "ok"})
-		}
-	}
-	// Get torrent file from kinozal.tv
-	torrentFile, err := kzUser.DownloadTorrentFile(url)
-	if err != nil {
-		log.Info("download_torrent_file", err.Error(), map[string]string{
-			"torrent_url": url,
-			"reason":      "torrent file not found",
-			"result":      "try to add by magnet link",
-		})
-		// Add torrent by magnet
-		err = qbUser.AddTorrentByMagnet(torrentInfo.Hash)
-		if err != nil {
-			// Return 500 Internal Server Error
-			return c.JSON(500, map[string]string{"error": err.Error()})
-		}
-	} else {
-		// Add torrent to qbittorrent
-		err = qbUser.AddTorrent(torrentInfo.Hash, torrentFile)
-		if err != nil {
-			// Return 500 Internal Server Error
-			return c.JSON(500, map[string]string{"error": err.Error()})
-		}
-	}
-
-	// Send telegram message about adding torrent in goroutine
-	go func() {
-		err = telegram.SendTorrentAction("added", globalConfig.TelegramToken, torrentInfo)
-		if err != nil {
-			log.Error("send_telegram_message", err.Error(), nil)
-		}
-	}()
+	// Send url to channel
+	h.urlChan <- url
 
 	return c.JSON(200, map[string]string{"status": "ok"})
 }
