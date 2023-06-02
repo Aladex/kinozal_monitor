@@ -32,7 +32,8 @@ func main() {
 	handler := api.NewApiHandler(qbittorrent.UrlChan)
 	msgPool := api.NewMsgPool(wsChan)
 
-	go qbittorrent.TorrentChecker(wsChan, qbittorrent.UrlChan)
+	go qbittorrent.TorrentChecker()
+	go qbittorrent.WsMessageHandler(wsChan, qbittorrent.UrlChan)
 
 	var contentHandler = echo.WrapHandler(http.FileServer(http.FS(assets.Assets)))
 	var contentRewrite = middleware.Rewrite(map[string]string{"/*": "/frontend/$1"})

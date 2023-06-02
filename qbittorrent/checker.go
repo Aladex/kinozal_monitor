@@ -148,7 +148,7 @@ func torrentWorker() {
 }
 
 // TorrentChecker for checking torrents in the database and on the tracker
-func TorrentChecker(wsMsg, url chan string) {
+func TorrentChecker() {
 	log.Info("info", "Checker started", nil)
 
 	torrentWorker()
@@ -158,11 +158,22 @@ func TorrentChecker(wsMsg, url chan string) {
 		select {
 		case <-ticker.C:
 			torrentWorker()
+		}
+	}
+}
+
+// WsMessageHandler for handling websocket messages
+func WsMessageHandler(wsMsg, url chan string) {
+	log.Info("info", "Websocket handler started", nil)
+	for {
+		select {
 		case torrentUrl := <-url:
+			log.Info("info", "URL received", map[string]string{
+				"torrent_url": torrentUrl,
+			})
 			go torrentAdder(torrentUrl, wsMsg)
 		}
 	}
-
 }
 
 func handleQbittorrentError(err error) {
