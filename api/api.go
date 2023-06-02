@@ -40,18 +40,16 @@ type MsgPool struct {
 	connections map[*websocket.Conn]bool
 	register    chan *websocket.Conn
 	unregister  chan *websocket.Conn
-	broadcast   chan []byte
-	msg         chan string
+	broadcast   chan string
 	connMux     sync.Mutex // Mutex to protect connections
 }
 
 func NewMsgPool(msgChan chan string) *MsgPool {
 	return &MsgPool{
-		broadcast:   make(chan []byte),
+		broadcast:   msgChan,
 		register:    make(chan *websocket.Conn),
 		unregister:  make(chan *websocket.Conn),
 		connections: make(map[*websocket.Conn]bool),
-		msg:         msgChan,
 	}
 }
 
@@ -77,10 +75,6 @@ func (pool *MsgPool) HandleWsConnections(c echo.Context) error {
 	return nil
 }
 
-func (pool *MsgPool) SendToAll(msg string) {
-	pool.broadcast <- []byte(msg)
-}
-
 func (pool *MsgPool) Start() {
 	for {
 		select {
@@ -96,7 +90,7 @@ func (pool *MsgPool) Start() {
 			pool.connMux.Unlock() // Unlock after modifying the connections map
 		case message := <-pool.broadcast:
 			for connection := range pool.connections {
-				if err := connection.WriteMessage(websocket.TextMessage, message); err != nil {
+				if err := connection.WriteMessage(websocket.TextMessage, []byte(message)); err != nil {
 					log.Error("Error during sending message to connection: ", err.Error(), nil)
 					pool.unregister <- connection
 					connection.Close()
