@@ -7,6 +7,7 @@ import (
 	logger "kinozaltv_monitor/logging"
 	"kinozaltv_monitor/qbittorrent"
 	"net/http"
+	"sync"
 )
 
 var qbUser = qbittorrent.GlobalQbittorrentUser
@@ -41,6 +42,7 @@ type MsgPool struct {
 	unregister  chan *websocket.Conn
 	broadcast   chan []byte
 	msg         chan string
+	connMux     sync.Mutex // Mutex to protect connections
 }
 
 func NewMsgPool(msgChan chan string) *MsgPool {
@@ -58,16 +60,21 @@ func (pool *MsgPool) HandleWsConnections(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	defer ws.Close()
+	defer func() {
+		pool.unregister <- ws
+		ws.Close()
+	}()
 
 	pool.register <- ws
 
 	for {
-		msg := <-pool.msg
-		// Send message to all connections
-		log.Info("Sending message to all connections: ", msg, nil)
-		pool.SendToAll(msg)
+		_, _, err := ws.ReadMessage()
+		if err != nil {
+			log.Error("Error during reading from connection: ", err.Error(), nil)
+			break
+		}
 	}
+	return nil
 }
 
 func (pool *MsgPool) SendToAll(msg string) {
@@ -78,11 +85,15 @@ func (pool *MsgPool) Start() {
 	for {
 		select {
 		case connection := <-pool.register:
+			pool.connMux.Lock() // Lock when modifying the connections map
 			pool.connections[connection] = true
+			pool.connMux.Unlock() // Unlock after modifying the connections map
 		case connection := <-pool.unregister:
+			pool.connMux.Lock() // Lock when modifying the connections map
 			if _, ok := pool.connections[connection]; ok {
 				delete(pool.connections, connection)
 			}
+			pool.connMux.Unlock() // Unlock after modifying the connections map
 		case message := <-pool.broadcast:
 			for connection := range pool.connections {
 				if err := connection.WriteMessage(websocket.TextMessage, message); err != nil {
