@@ -1,3 +1,7 @@
+<p align="center">
+<img src="https://raw.githubusercontent.com/Aladex/kinozal_monitor/master/logo/logo.png" width="350">
+</p>
+
 # Kinozal Monitor
 
 Kinozal Monitor is a torrent management tool designed to interact with kinozal.tv and qbittorrent. It provides functionalities to add, remove, and get a list of torrents.

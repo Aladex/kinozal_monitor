@@ -10,7 +10,13 @@ import (
 	"sync"
 )
 
-var qbUser = qbittorrent.GlobalQbittorrentUser
+type QbittorrentUser interface {
+	DeleteTorrent(hash string, deleteFiles bool) error
+}
+
+// qbUser is a global variable for storing qbittorrent user data
+var qbUser QbittorrentUser
+
 var log = logger.New("api")
 
 var (
@@ -146,6 +152,7 @@ func RemoveTorrentUrl(c echo.Context) error {
 
 // GetTorrentList is a function for getting a list of torrents
 func GetTorrentList(c echo.Context) error {
+	qbUser = qbittorrent.GlobalQbittorrentUser
 	dbTorrents, err := database.GetAllRecords(database.DB)
 	if err != nil {
 		// Return 500 Internal Server Error

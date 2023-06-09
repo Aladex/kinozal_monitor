@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 )
 
 var log = logger.New("kinozal_package")
@@ -43,6 +44,18 @@ func (t *TrackerUser) Login() error {
 	jar, _ := cookiejar.New(nil)
 	t.Client = &http.Client{
 		Jar: jar,
+		// Set timeout for http client to 10 seconds
+		Timeout: 10 * time.Second,
+		// Check redirect
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			// If redirect to login page
+			if strings.Contains(req.URL.String(), "takelogin.php") {
+				// Return error
+				return fmt.Errorf("redirect to login page")
+			}
+			// Else return nil
+			return nil
+		},
 	}
 
 	data := url.Values{
@@ -154,6 +167,7 @@ func CheckBodyIsTorrentFile(body []byte) bool {
 	return true
 }
 
+// DownloadTorrentFile is a method for downloading torrent file from kinozal.tv
 func (t *TrackerUser) DownloadTorrentFile(originalUrl string) ([]byte, error) {
 	downloadUrl, err := generateUrl(originalUrl, "download")
 	if err != nil {
