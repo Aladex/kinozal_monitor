@@ -1,5 +1,5 @@
 <p align="center">
-<img src="https://raw.githubusercontent.com/Aladex/kinozal_monitor/master/logo/logo.png" width="350">
+<img src="logo/logo.png" width="350">
 </p>
 
 # Kinozal Monitor
