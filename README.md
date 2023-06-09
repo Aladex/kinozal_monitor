@@ -26,7 +26,8 @@ You need to configure the system before you can use it. The configuration includ
 
 Here's the structure of the config.ini file:
 
-```[qbittorrent]
+```ini
+[qbittorrent]
 username = your_qbittorrent_username
 password = your_qbittorrent_password
 url = your_qbittorrent_url
