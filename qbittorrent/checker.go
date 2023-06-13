@@ -125,6 +125,11 @@ func torrentWorker() {
 		}
 
 		// Get torrent info from kinozal.tv
+		log.Info("info", "Get torrent info from kinozal.tv", map[string]string{
+			"torrent_url":  dbTorrent.Url,
+			"torrent_hash": dbTorrent.Hash,
+			"reason":       "check if torrent exists in kinozal.tv",
+		})
 		torrentInfo, err := kzUser.GetTorrentHash(dbTorrent.Url)
 		if err != nil {
 			log.Error("get_torrent_info", err.Error(), nil)

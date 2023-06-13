@@ -45,7 +45,7 @@ func (t *TrackerUser) Login() error {
 	t.Client = &http.Client{
 		Jar: jar,
 		// Set timeout for http client to 10 seconds
-		Timeout: 10 * time.Second,
+		Timeout: 100 * time.Second,
 		// Check redirect
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			// If redirect to login page

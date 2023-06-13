@@ -4,6 +4,7 @@ import (
 	"errors"
 	"golang.org/x/net/html"
 	"net/http"
+	"strings"
 )
 
 // KinozalTorrent is a struct for storing torrent data
@@ -18,9 +19,7 @@ var ErrHashIsEmpty = errors.New("hash is empty")
 
 // GetTorrentHash is a method for getting torrent hash from kinozal.tv
 func (t *TrackerUser) GetTorrentHash(url string) (KinozalTorrent, error) {
-	var kzTorrent = KinozalTorrent{
-		Url: url,
-	}
+	var kzTorrent KinozalTorrent
 
 	// Convert url to detailed url
 	detailedUrl, err := generateUrl(url, "details")
@@ -44,6 +43,9 @@ func (t *TrackerUser) GetTorrentHash(url string) (KinozalTorrent, error) {
 		// Return custom error with text "hash is empty"
 		return kzTorrent, ErrHashIsEmpty
 	}
+
+	// Set torrent url
+	kzTorrent.Url = url
 
 	return kzTorrent, nil
 }
@@ -84,6 +86,31 @@ func (t *TrackerUser) handleRequestError(err error, url string) {
 
 func (t *TrackerUser) parseHtml(doc *html.Node) KinozalTorrent {
 	var kzTorrent KinozalTorrent
-	// Your html parsing logic here
+
+	var f func(*html.Node)
+
+	f = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "li" {
+			for c := n.FirstChild; c != nil; c = c.NextSibling {
+				if c.Type == html.ElementNode && c.Data == "div" {
+					for _, a := range c.Attr {
+						if a.Key == "class" && a.Val == "b" {
+							kzTorrent.Name = c.FirstChild.Data
+						}
+					}
+				}
+				if strings.Contains(c.Data, "Инфо хеш: ") {
+					kzTorrent.Hash = strings.TrimPrefix(c.Data, "Инфо хеш: ")
+					kzTorrent.Hash = strings.ToLower(strings.TrimSpace(kzTorrent.Hash))
+				}
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			f(c)
+		}
+	}
+
+	f(doc)
+
 	return kzTorrent
 }
