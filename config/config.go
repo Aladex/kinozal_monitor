@@ -16,6 +16,7 @@ type AppConfig struct {
 	TelegramChatId  string
 	TelegramToken   string
 	ListenPort      string
+	UserAgent       string
 }
 
 // GlobalConfig is a global variable for storing user data
@@ -32,6 +33,7 @@ func loadConfig() error {
 	configFieldMap := map[string]map[string]*string{
 		"app": {
 			"LISTEN_PORT": &GlobalConfig.ListenPort,
+			"USER_AGENT":  &GlobalConfig.UserAgent,
 		},
 		"qbittorrent": {
 			"QB_USERNAME": &GlobalConfig.QBUsername,
@@ -50,6 +52,7 @@ func loadConfig() error {
 
 	defaultValues := map[string]string{
 		"LISTEN_PORT": "1323",
+		"USER_AGENT":  "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/113.0",
 	}
 
 	for section, fields := range configFieldMap {
