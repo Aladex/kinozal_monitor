@@ -23,10 +23,11 @@ var GlobalQbittorrentUser *QbittorrentUser
 
 // Torrent is a struct for storing torrent data
 type Torrent struct {
-	Hash  string `json:"hash"`
-	Title string `json:"title"`
-	Name  string `json:"name"`
-	Url   string `json:"url"`
+	Hash     string `json:"hash"`
+	Title    string `json:"title"`
+	Name     string `json:"name"`
+	Url      string `json:"url"`
+	SavePath string `json:"save_path"`
 }
 
 // Login is a method for logging in to the tracker
@@ -182,6 +183,45 @@ func (qb *QbittorrentUser) DeleteTorrentByName(torrentName string, dropFiles boo
 	}
 
 	return nil
+}
+
+// stringInSlice is a function for checking if a string is in a slice
+func stringInSlice(a string, list []string) bool {
+	for _, b := range list {
+		if b == a {
+			return true
+		}
+
+	}
+	return false
+}
+
+// GetDownloadPaths is a method for getting a list of download paths from existing torrents
+func (qb *QbittorrentUser) GetDownloadPaths() ([]string, error) {
+	// Get torrent list
+	resp, err := qb.Client.Get(globalConfig.QBUrl + "/api/v2/torrents/info?filter=all")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var torrents []Torrent
+	err = json.NewDecoder(resp.Body).Decode(&torrents)
+	if err != nil {
+		return nil, err
+	}
+
+	// Iterate over torrents and get download paths
+	var downloadPaths []string
+	for _, torrent := range torrents {
+		// If torrent is already in the download paths list, skip it
+		if stringInSlice(torrent.SavePath, downloadPaths) {
+			continue
+		}
+		downloadPaths = append(downloadPaths, torrent.SavePath)
+	}
+
+	return downloadPaths, nil
 }
 
 func init() {

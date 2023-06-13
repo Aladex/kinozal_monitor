@@ -12,10 +12,11 @@ import (
 
 type QbittorrentUser interface {
 	DeleteTorrent(hash string, deleteFiles bool) error
+	GetDownloadPaths() ([]string, error)
 }
 
 // qbUser is a global variable for storing qbittorrent user data
-var qbUser QbittorrentUser
+var qbUser = qbittorrent.GlobalQbittorrentUser
 
 var log = logger.New("api")
 
@@ -152,7 +153,6 @@ func RemoveTorrentUrl(c echo.Context) error {
 
 // GetTorrentList is a function for getting a list of torrents
 func GetTorrentList(c echo.Context) error {
-	qbUser = qbittorrent.GlobalQbittorrentUser
 	dbTorrents, err := database.GetAllRecords(database.DB)
 	if err != nil {
 		// Return 500 Internal Server Error
@@ -160,4 +160,15 @@ func GetTorrentList(c echo.Context) error {
 	}
 	// Convert to JSON
 	return c.JSON(200, dbTorrents)
+}
+
+// GetDownloadPaths is a function for getting a list of download paths from qbittorrent
+func GetDownloadPaths(c echo.Context) error {
+	paths, err := qbUser.GetDownloadPaths()
+	if err != nil {
+		// Return 500 Internal Server Error
+		return c.JSON(500, map[string]string{"error": err.Error()})
+	}
+	// Convert to JSON
+	return c.JSON(200, paths)
 }

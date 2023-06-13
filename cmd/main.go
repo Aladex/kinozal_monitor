@@ -42,6 +42,7 @@ func main() {
 
 	// API routes
 	e.GET("/api/torrents", api.GetTorrentList)
+	e.GET("/api/download-paths", api.GetDownloadPaths)
 	e.POST("/api/add", handler.AddTorrentUrl)
 	e.DELETE("/api/remove", api.RemoveTorrentUrl)
 
