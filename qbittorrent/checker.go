@@ -202,7 +202,7 @@ func addTorrentToQbittorrent(dbTorrent Torrent, sendTgMessage bool) bool {
 			return false
 		}
 	} else {
-		err = GlobalQbittorrentUser.AddTorrent(dbTorrent.Hash, torrentFile)
+		err = GlobalQbittorrentUser.AddTorrent(dbTorrent.Hash, dbTorrent.SavePath, torrentFile)
 		if err != nil {
 			log.Error("add_torrent", err.Error(), nil)
 			return false

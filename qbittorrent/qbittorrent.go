@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"sort"
 )
 
 var globalConfig = config.GlobalConfig
@@ -74,7 +75,7 @@ func (qb *QbittorrentUser) GetTorrentHashList() ([]Torrent, error) {
 }
 
 // AddTorrent is a method for adding a torrent to the client
-func (qb *QbittorrentUser) AddTorrent(hash string, torrent []byte) error {
+func (qb *QbittorrentUser) AddTorrent(hash, savePath string, torrent []byte) error {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 	part, err := writer.CreateFormFile("torrents", hash+".torrent")
@@ -85,6 +86,13 @@ func (qb *QbittorrentUser) AddTorrent(hash string, torrent []byte) error {
 	if err != nil {
 		return err
 	}
+
+	// Add the save_path field
+	err = writer.WriteField("save_path", savePath)
+	if err != nil {
+		return err
+	}
+
 	err = writer.Close()
 	if err != nil {
 		return err
@@ -113,7 +121,7 @@ func (qb *QbittorrentUser) AddTorrentByMagnet(hash, downloadPath string) error {
 	magnet := "magnet:?xt=urn:btih:" + hash
 	// Add torrent by magnet
 	resp, err := qb.Client.PostForm(globalConfig.QBUrl+"/api/v2/torrents/add",
-		url.Values{"urls": {magnet}, "savepath": {downloadPath}})
+		url.Values{"urls": {magnet}, "save_path": {downloadPath}})
 	if err != nil {
 		return err
 	}
@@ -186,17 +194,6 @@ func (qb *QbittorrentUser) DeleteTorrentByName(torrentName string, dropFiles boo
 	return nil
 }
 
-// stringInSlice is a function for checking if a string is in a slice
-func stringInSlice(a string, list []string) bool {
-	for _, b := range list {
-		if b == a {
-			return true
-		}
-
-	}
-	return false
-}
-
 // GetDownloadPaths is a method for getting a list of download paths from existing torrents
 func (qb *QbittorrentUser) GetDownloadPaths() ([]string, error) {
 	// Get torrent list
@@ -212,17 +209,35 @@ func (qb *QbittorrentUser) GetDownloadPaths() ([]string, error) {
 		return nil, err
 	}
 
-	// Iterate over torrents and get download paths
-	var downloadPaths []string
+	// Use a map to count the frequency of each path
+	pathCount := make(map[string]int)
+
 	for _, torrent := range torrents {
-		// If torrent is already in the download paths list, skip it
-		if stringInSlice(torrent.SavePath, downloadPaths) {
-			continue
-		}
-		downloadPaths = append(downloadPaths, torrent.SavePath)
+		pathCount[torrent.SavePath]++
 	}
 
-	return downloadPaths, nil
+	// Transfer map to a slice of struct to make it sortable
+	type pathFreq struct {
+		path  string
+		count int
+	}
+	var paths []pathFreq
+	for path, count := range pathCount {
+		paths = append(paths, pathFreq{path, count})
+	}
+
+	// Sort paths slice by frequency
+	sort.Slice(paths, func(i, j int) bool {
+		return paths[i].count > paths[j].count
+	})
+
+	// Create slice of sorted paths
+	var sortedPaths []string
+	for _, pf := range paths {
+		sortedPaths = append(sortedPaths, pf.path)
+	}
+
+	return sortedPaths, nil
 }
 
 func init() {

@@ -111,16 +111,23 @@ func (pool *MsgPool) Start() {
 
 // AddTorrentUrl is a function for adding a torrent by url
 func (h *ApiHandler) AddTorrentUrl(c echo.Context) error {
-	// Get url from request body by POST method
-	url := c.FormValue("url")
-	downloadPath := c.FormValue("download_path")
+	// Create new TorrentData instance
+	var torrentData common.TorrentData
+
+	// Bind request body to torrentData
+	if err := c.Bind(&torrentData); err != nil {
+		// If there's any error return 400 Bad Request
+		return c.JSON(400, map[string]string{"error": "Bad Request"})
+	}
+
 	// Check if url is empty
-	if url == "" {
+	if torrentData.Url == "" {
 		// Return 400 Bad Request
 		return c.JSON(400, map[string]string{"error": "url is empty"})
 	}
+
 	// Send url to channel
-	h.torrentData <- common.TorrentData{Url: url, DownloadPath: downloadPath}
+	h.torrentData <- common.TorrentData{Url: torrentData.Url, DownloadPath: torrentData.DownloadPath}
 
 	return c.JSON(200, map[string]string{"status": "ok"})
 }
