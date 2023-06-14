@@ -78,7 +78,7 @@ func (qb *QbittorrentUser) GetTorrentHashList() ([]Torrent, error) {
 func (qb *QbittorrentUser) AddTorrent(hash, savePath string, torrent []byte) error {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile("torrents", hash+".torrent")
+	part, err := writer.CreateFormFile("fileselect[]", hash+".torrent")
 	if err != nil {
 		return err
 	}
@@ -88,10 +88,17 @@ func (qb *QbittorrentUser) AddTorrent(hash, savePath string, torrent []byte) err
 	}
 
 	// Add the save_path field
-	err = writer.WriteField("save_path", savePath)
+	err = writer.WriteField("savepath", savePath)
 	if err != nil {
 		return err
 	}
+
+	// Add other fields
+	err = writer.WriteField("autoTMM", "false")
+	if err != nil {
+		return err
+	}
+	// add other fields as necessary
 
 	err = writer.Close()
 	if err != nil {
@@ -109,7 +116,6 @@ func (qb *QbittorrentUser) AddTorrent(hash, savePath string, torrent []byte) err
 		return err
 	}
 
-	// Print status code
 	resp.Body.Close()
 
 	return nil
