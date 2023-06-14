@@ -3,6 +3,7 @@ package api
 import (
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
+	"kinozaltv_monitor/common"
 	"kinozaltv_monitor/database"
 	logger "kinozaltv_monitor/logging"
 	"kinozaltv_monitor/qbittorrent"
@@ -30,16 +31,16 @@ var (
 )
 
 type ApiHandler struct {
-	urlChan chan string
+	torrentData chan common.TorrentData
 }
 
 type MsgHandler struct {
 	msg chan string
 }
 
-func NewApiHandler(urlChan chan string) *ApiHandler {
+func NewApiHandler(torrentData chan common.TorrentData) *ApiHandler {
 	return &ApiHandler{
-		urlChan: urlChan,
+		torrentData: torrentData,
 	}
 }
 
@@ -112,13 +113,14 @@ func (pool *MsgPool) Start() {
 func (h *ApiHandler) AddTorrentUrl(c echo.Context) error {
 	// Get url from request body by POST method
 	url := c.FormValue("url")
+	downloadPath := c.FormValue("download_path")
 	// Check if url is empty
 	if url == "" {
 		// Return 400 Bad Request
 		return c.JSON(400, map[string]string{"error": "url is empty"})
 	}
 	// Send url to channel
-	h.urlChan <- url
+	h.torrentData <- common.TorrentData{Url: url, DownloadPath: downloadPath}
 
 	return c.JSON(200, map[string]string{"status": "ok"})
 }

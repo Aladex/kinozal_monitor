@@ -5,6 +5,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	assets "kinozaltv_monitor"
 	"kinozaltv_monitor/api"
+	"kinozaltv_monitor/common"
 	"kinozaltv_monitor/config"
 	"kinozaltv_monitor/qbittorrent"
 	"net/http"
@@ -14,6 +15,7 @@ var globalConfig = config.GlobalConfig
 
 func main() {
 	wsChan := make(chan string)
+	urlChan := make(chan common.TorrentData, 100)
 
 	e := echo.New()
 	e.HideBanner = true
@@ -29,11 +31,11 @@ func main() {
 	e.Use(middleware.Recover())
 
 	// Set channel for adding torrent by url
-	handler := api.NewApiHandler(qbittorrent.UrlChan)
+	handler := api.NewApiHandler(urlChan)
 	msgPool := api.NewMsgPool(wsChan)
 
 	go qbittorrent.TorrentChecker()
-	go qbittorrent.WsMessageHandler(wsChan, qbittorrent.UrlChan)
+	go qbittorrent.WsMessageHandler(wsChan, urlChan)
 
 	var contentHandler = echo.WrapHandler(http.FileServer(http.FS(assets.Assets)))
 	var contentRewrite = middleware.Rewrite(map[string]string{"/*": "/frontend/$1"})

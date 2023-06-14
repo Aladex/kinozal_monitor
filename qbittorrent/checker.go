@@ -1,6 +1,7 @@
 package qbittorrent
 
 import (
+	"kinozaltv_monitor/common"
 	"kinozaltv_monitor/database"
 	"kinozaltv_monitor/kinozal"
 	logger "kinozaltv_monitor/logging"
@@ -10,11 +11,10 @@ import (
 
 var log = logger.New("qbittorrent")
 var kzUser = kinozal.KinozalUser
-var UrlChan = make(chan string, 100)
 
 // torrentAdder
-func torrentAdder(url string, wsMsg chan string) {
-	torrentInfo, err := kzUser.GetTorrentHash(url)
+func torrentAdder(torrentData common.TorrentData, wsMsg chan string) {
+	torrentInfo, err := kzUser.GetTorrentHash(torrentData.Url)
 	if err != nil {
 		log.Error("get_torrent_info", err.Error(), nil)
 		// Return 500 Internal Server Error
@@ -30,7 +30,7 @@ func torrentAdder(url string, wsMsg chan string) {
 	}
 
 	// Get title from original url
-	title, err := kzUser.GetTitleFromUrl(url)
+	title, err := kzUser.GetTitleFromUrl(torrentData.Url)
 	if err != nil {
 		log.Error("get_title_from_url", err.Error(), nil)
 		wsMsg <- "500"
@@ -55,44 +55,26 @@ func torrentAdder(url string, wsMsg chan string) {
 			return
 		}
 	}
-	// Get torrent file from kinozal.tv
-	torrentFile, err := kzUser.DownloadTorrentFile(url)
-	if err != nil {
-		log.Info("download_torrent_file", err.Error(), map[string]string{
-			"torrent_url": url,
-			"reason":      "torrent file not found",
-			"result":      "try to add by magnet link",
-		})
-		// Add torrent by magnet
-		err = GlobalQbittorrentUser.AddTorrentByMagnet(torrentInfo.Hash)
-		if err != nil {
-			log.Error("add_torrent_by_magnet", err.Error(), nil)
-			wsMsg <- "500"
-			return
-		}
-	} else {
-		// Add torrent to qbittorrent
-		err = GlobalQbittorrentUser.AddTorrent(torrentInfo.Hash, torrentFile)
-		if err != nil {
-			log.Error("add_torrent", err.Error(), nil)
-			wsMsg <- "500"
-			return
-		}
+
+	// Add torrent to qbittorrent by addToQbittorrent function
+
+	// Create qbitTorrent struct
+	qbTorrent := Torrent{
+		Hash:     torrentInfo.Hash,
+		Name:     torrentInfo.Title,
+		Url:      torrentInfo.Url,
+		SavePath: torrentData.DownloadPath,
 	}
-
-	// Send telegram message about adding torrent in goroutine
 	go func() {
-		err = telegram.SendTorrentAction("added", globalConfig.TelegramToken, torrentInfo)
-		if err != nil {
-			log.Error("send_telegram_message", err.Error(), nil)
-		}
-	}()
+		// Add torrent to qbittorrent
+		addTorrentToQbittorrent(qbTorrent, true)
 
-	// Send websocket message about adding torrent
-	log.Info("info", "Torrent added", map[string]string{
-		"torrent_url": url,
-	})
-	wsMsg <- "added"
+		// Send websocket message about adding torrent
+		log.Info("info", "Torrent added", map[string]string{
+			"torrent_url": torrentData.Url,
+		})
+		wsMsg <- "added"
+	}()
 }
 
 func torrentWorker() {
@@ -168,13 +150,13 @@ func TorrentChecker() {
 }
 
 // WsMessageHandler for handling websocket messages
-func WsMessageHandler(wsMsg, url chan string) {
+func WsMessageHandler(wsMsg chan string, torrentData chan common.TorrentData) {
 	log.Info("info", "Websocket handler started", nil)
 	for {
 		select {
-		case torrentUrl := <-url:
+		case torrentUrl := <-torrentData:
 			log.Info("info", "URL received", map[string]string{
-				"torrent_url": torrentUrl,
+				"torrent_url": torrentUrl.Url,
 			})
 			go torrentAdder(torrentUrl, wsMsg)
 		}
@@ -214,7 +196,7 @@ func addTorrentToQbittorrent(dbTorrent Torrent, sendTgMessage bool) bool {
 		})
 
 		// Add torrent my magnet link
-		err = GlobalQbittorrentUser.AddTorrentByMagnet(dbTorrent.Hash)
+		err = GlobalQbittorrentUser.AddTorrentByMagnet(dbTorrent.Hash, dbTorrent.SavePath)
 		if err != nil {
 			log.Error("add_torrent_by_magnet", err.Error(), nil)
 			return false

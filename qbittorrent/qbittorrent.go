@@ -107,12 +107,13 @@ func (qb *QbittorrentUser) AddTorrent(hash string, torrent []byte) error {
 	return nil
 }
 
-func (qb *QbittorrentUser) AddTorrentByMagnet(hash string) error {
+// AddTorrentByMagnet is a method for adding a torrent by magnet link
+func (qb *QbittorrentUser) AddTorrentByMagnet(hash, downloadPath string) error {
 	// Convert hash to magnet
 	magnet := "magnet:?xt=urn:btih:" + hash
 	// Add torrent by magnet
 	resp, err := qb.Client.PostForm(globalConfig.QBUrl+"/api/v2/torrents/add",
-		url.Values{"urls": {magnet}})
+		url.Values{"urls": {magnet}, "savepath": {downloadPath}})
 	if err != nil {
 		return err
 	}
