@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"os"
 	"sort"
 )
 
@@ -255,6 +256,7 @@ func init() {
 
 	err := GlobalQbittorrentUser.Login()
 	if err != nil {
-		panic(err)
+		log.Error("qbittorrent", "Failed to login to qbittorrent", nil)
+		os.Exit(1)
 	}
 }
