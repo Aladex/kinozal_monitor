@@ -7,16 +7,17 @@ import (
 
 // Torrent is a struct for storing torrent data from the database
 type Torrent struct {
-	ID    int    `json:"id"`
-	Title string `json:"title"`
-	Name  string `json:"name"`
-	Hash  string `json:"hash"`
-	Url   string `json:"url"`
+	ID         int    `json:"id"`
+	Title      string `json:"title"`
+	Name       string `json:"name"`
+	Hash       string `json:"hash"`
+	Url        string `json:"url"`
+	WatchEvery int    `json:"watch_every"`
 }
 
 // GetAllRecords is a function for getting all torrents records from the database
 func GetAllRecords(db *sql.DB) ([]Torrent, error) {
-	rows, err := db.Query("SELECT id, title, name, hash, url FROM torrents")
+	rows, err := db.Query("SELECT id, title, name, hash, url, watch_every FROM torrents")
 	if err != nil {
 		return nil, err
 	}
@@ -25,7 +26,7 @@ func GetAllRecords(db *sql.DB) ([]Torrent, error) {
 	records := make([]Torrent, 0)
 	for rows.Next() {
 		var r Torrent
-		if err := rows.Scan(&r.ID, &r.Title, &r.Name, &r.Hash, &r.Url); err != nil {
+		if err := rows.Scan(&r.ID, &r.Title, &r.Name, &r.Hash, &r.Url, &r.WatchEvery); err != nil {
 			return nil, err
 		}
 		records = append(records, r)
@@ -91,5 +92,14 @@ func UpdateRecord(db *sql.DB, torrentInfo kinozal.KinozalTorrent) error {
 		return err
 	}
 
+	return nil
+}
+
+// SetWatchFlag is a function for setting watch_it flag for a torrent record in the database
+func SetWatchFlag(db *sql.DB, url string, watchPeriod int) error {
+	_, err := db.Exec("UPDATE torrents SET watch_every = ? WHERE url = ?", watchPeriod, url)
+	if err != nil {
+		return err
+	}
 	return nil
 }

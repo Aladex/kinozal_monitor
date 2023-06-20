@@ -46,6 +46,8 @@ func main() {
 	e.GET("/api/torrents", api.GetTorrentList)
 	e.GET("/api/download-paths", api.GetDownloadPaths)
 	e.POST("/api/add", handler.AddTorrentUrl)
+	e.POST("/api/watch", handler.WatchTorrent)
+
 	e.DELETE("/api/remove", api.RemoveTorrentUrl)
 
 	// Websocket route

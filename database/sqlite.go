@@ -34,6 +34,15 @@ func CreateSQLiteDB() *sql.DB {
 		log.Fatal(err)
 	}
 
+	// Check if column watch_every exists
+	_, err = db.Exec(`SELECT watch_every FROM torrents LIMIT 1`)
+	if err != nil {
+		// Add column watch_every
+		_, err = db.Exec(`ALTER TABLE torrents ADD COLUMN watch_every INTEGER DEFAULT 0`)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
 	return db
 }
 

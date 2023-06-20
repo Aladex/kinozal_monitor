@@ -8,6 +8,7 @@ import (
 	logger "kinozaltv_monitor/logging"
 	"kinozaltv_monitor/qbittorrent"
 	"net/http"
+	"strconv"
 	"sync"
 )
 
@@ -180,4 +181,34 @@ func GetDownloadPaths(c echo.Context) error {
 	}
 	// Convert to JSON
 	return c.JSON(200, paths)
+}
+
+// WatchTorrents is a function for set a watch flag for torrents
+func (h *ApiHandler) WatchTorrent(c echo.Context) error {
+	// Read JSON from request body
+	var json map[string]string
+	err := c.Bind(&json)
+	if err != nil {
+		// Return 400 Bad Request
+		return c.JSON(400, map[string]string{"error": err.Error()})
+	}
+	// Get torrent name from JSON
+	torrentUrl := json["url"]
+	// Get watch period from JSON in minutes
+	watchPeriod := json["watchPeriod"]
+	// Convert watch period to int
+	watchPeriodInt, err := strconv.Atoi(watchPeriod)
+	if err != nil {
+		// Return 400 Bad Request
+		return c.JSON(400, map[string]string{"error": err.Error()})
+	}
+
+	// Set watch flag for torrent
+	err = database.SetWatchFlag(database.DB, torrentUrl, watchPeriodInt)
+	if err != nil {
+		// Return 500 Internal Server Error
+		return c.JSON(500, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(200, map[string]string{"status": "ok"})
 }

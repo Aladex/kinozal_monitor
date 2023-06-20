@@ -1,6 +1,8 @@
 package qbittorrent
 
 import (
+	"context"
+	"fmt"
 	"kinozaltv_monitor/common"
 	"kinozaltv_monitor/database"
 	"kinozaltv_monitor/kinozal"
@@ -11,6 +13,13 @@ import (
 
 var log = logger.New("qbittorrent")
 var kzUser = kinozal.KinozalUser
+
+type TorrentWatcher struct {
+	cancel     context.CancelFunc
+	watchEvery int
+}
+
+var torrentWatchers map[int]*TorrentWatcher
 
 // torrentAdder
 func torrentAdder(torrentData common.TorrentData, wsMsg chan string) {
@@ -77,74 +86,140 @@ func torrentAdder(torrentData common.TorrentData, wsMsg chan string) {
 	}()
 }
 
-func torrentWorker() {
-	// Get torrent list from database
-	dbTorrents, err := database.GetAllRecords(database.DB)
+func torrentWorker(ctx context.Context, dbTorrent database.Torrent) {
+	log.Info("info", "Torrent worker started", map[string]string{
+		"torrent_url":  dbTorrent.Url,
+		"torrent_hash": dbTorrent.Hash,
+		"watch_every":  fmt.Sprintf("%d minutes", dbTorrent.WatchEvery),
+	})
+
+	// Check torrent
+	err := torrentChecker(dbTorrent)
 	if err != nil {
-		log.Error("get_db_records", err.Error(), nil)
-		return
+		log.Error("torrent_checker", err.Error(), nil)
 	}
 
+	// Create ticker for checking torrent every watch interval
+	ticker := time.NewTicker(time.Duration(dbTorrent.WatchEvery) * time.Minute)
+	defer ticker.Stop() // Important to stop the ticker when the function exits
+
+	for {
+		select {
+		case <-ticker.C:
+			// Check torrent
+			err := torrentChecker(dbTorrent)
+			if err != nil {
+				log.Error("torrent_checker", err.Error(), nil)
+			}
+		case <-ctx.Done():
+			// Context cancelled, stop the worker
+			log.Info("info", "Torrent worker cancelled", map[string]string{
+				"torrent_url":  dbTorrent.Url,
+				"torrent_hash": dbTorrent.Hash,
+			})
+			return
+		}
+	}
+}
+
+func torrentChecker(dbTorrent database.Torrent) error {
 	// Get torrent list from qbittorrent
 	qbTorrents, err := GlobalQbittorrentUser.GetTorrentHashList()
 	if err != nil {
 		log.Error("get_qb_torrents", err.Error(), nil)
 		handleQbittorrentError(err)
-		return
+		return err
 	}
 
-	for _, dbTorrent := range dbTorrents {
-		qbTorrent := Torrent{
-			Hash:  dbTorrent.Hash,
-			Title: dbTorrent.Title,
-			Name:  dbTorrent.Name,
-			Url:   dbTorrent.Url,
+	qbTorrent := Torrent{
+		Hash:  dbTorrent.Hash,
+		Title: dbTorrent.Title,
+		Name:  dbTorrent.Name,
+		Url:   dbTorrent.Url,
+	}
+	if !contains(qbTorrents, dbTorrent.Hash) {
+		if !addTorrentToQbittorrent(qbTorrent, true) {
+			return fmt.Errorf("torrent not added to qbittorrent")
 		}
-		if !contains(qbTorrents, dbTorrent.Hash) {
-			if !addTorrentToQbittorrent(qbTorrent, true) {
-				continue
-			}
-		}
+	}
 
-		// Get torrent info from kinozal.tv
-		log.Info("info", "Get torrent info from kinozal.tv", map[string]string{
-			"torrent_url":  dbTorrent.Url,
-			"torrent_hash": dbTorrent.Hash,
-			"reason":       "check if torrent exists in kinozal.tv",
-		})
-		torrentInfo, err := kzUser.GetTorrentHash(dbTorrent.Url)
+	// Get torrent info from kinozal.tv
+	log.Info("info", "Get torrent info from kinozal.tv", map[string]string{
+		"torrent_url":  dbTorrent.Url,
+		"torrent_hash": dbTorrent.Hash,
+		"reason":       "check if torrent exists in kinozal.tv",
+	})
+	torrentInfo, err := kzUser.GetTorrentHash(dbTorrent.Url)
+	if err != nil {
+		log.Error("get_torrent_info", err.Error(), nil)
+		return err
+	}
+
+	// If hash is not equal then update torrent
+	if torrentInfo.Hash != dbTorrent.Hash {
+		// Update title of torrent
+		torrentInfo.Title, err = kzUser.GetTitleFromUrl(dbTorrent.Url)
 		if err != nil {
-			log.Error("get_torrent_info", err.Error(), nil)
-			continue
+			log.Error("get_title_from_url", err.Error(), nil)
+			// Set title from database
+			torrentInfo.Title = dbTorrent.Title
 		}
-
-		// If hash is not equal then update torrent
-		if torrentInfo.Hash != dbTorrent.Hash {
-			// Update title of torrent
-			torrentInfo.Title, err = kzUser.GetTitleFromUrl(dbTorrent.Url)
-			if err != nil {
-				log.Error("get_title_from_url", err.Error(), nil)
-				// Set title from database
-				torrentInfo.Title = dbTorrent.Title
-			}
-			if !updateTorrentInQbittorrent(qbTorrent, torrentInfo) {
-				continue
-			}
+		if !updateTorrentInQbittorrent(qbTorrent, torrentInfo) {
+			log.Error("update_torrent_in_qbittorrent", "Torrent not updated", nil)
+			return fmt.Errorf("torrent not updated")
 		}
 	}
+	return nil
 }
 
 // TorrentChecker for checking torrents in the database and on the tracker
 func TorrentChecker() {
 	log.Info("info", "Checker started", nil)
-
-	torrentWorker()
-
-	ticker := time.NewTicker(time.Minute * 10)
+	// Get torrent list from database every 5 minutes
+	// And create watcher for every torrent if it has watch interval
+	torrentWatchers = make(map[int]*TorrentWatcher)
 	for {
-		select {
-		case <-ticker.C:
-			torrentWorker()
+		// Get torrent list from database
+		dbTorrents, err := database.GetAllRecords(database.DB)
+		if err != nil {
+			log.Error("get_db_records", err.Error(), nil)
+			return
+		}
+
+		// Iterate over torrents and create watcher for every torrent with watch interval
+		for _, dbTorrent := range dbTorrents {
+			if dbTorrent.WatchEvery > 0 {
+				// Check if watcher already exists
+				if _, ok := torrentWatchers[dbTorrent.ID]; !ok {
+					// Create context for watcher
+					ctx, cancel := context.WithCancel(context.Background())
+					// Create watcher
+					torrentWatchers[dbTorrent.ID] = &TorrentWatcher{
+						cancel:     cancel,
+						watchEvery: dbTorrent.WatchEvery,
+					}
+					go torrentWorker(ctx, dbTorrent)
+				}
+				// If watch interval changed then delete watcher and create new one
+				if torrentWatchers[dbTorrent.ID].watchEvery != dbTorrent.WatchEvery {
+					torrentWatchers[dbTorrent.ID].cancel()
+					// If watch interval equals to 0 then delete watcher
+					if dbTorrent.WatchEvery == 0 {
+						delete(torrentWatchers, dbTorrent.ID)
+					} else {
+						// Create context for watcher
+						ctx, cancel := context.WithCancel(context.Background())
+						// Create watcher
+						torrentWatchers[dbTorrent.ID] = &TorrentWatcher{
+							cancel:     cancel,
+							watchEvery: dbTorrent.WatchEvery,
+						}
+						go torrentWorker(ctx, dbTorrent)
+					}
+				}
+
+			}
+
 		}
 	}
 }

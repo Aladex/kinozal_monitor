@@ -35,6 +35,13 @@ func (t *TrackerUser) GetTorrentHash(url string) (KinozalTorrent, error) {
 		} else if kzTorrent.Hash != "" {
 			// If we get hash successfully, break the loop
 			break
+		} else {
+			// If we get empty hash, relogin
+			t.Client.Jar = nil
+			err = t.Login()
+			if err != nil {
+				log.Error("kinozal_login_err", err.Error(), map[string]string{"url": url})
+			}
 		}
 	}
 
