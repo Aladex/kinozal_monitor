@@ -100,6 +100,12 @@ func torrentWorker(ctx context.Context, dbTorrent database.Torrent) {
 		log.Error("torrent_checker", err.Error(), nil)
 	}
 
+	// Iniial torrent check
+	err = torrentChecker(dbTorrent)
+	if err != nil {
+		log.Error("torrent_checker", err.Error(), nil)
+	}
+
 	// Create ticker for checking torrent every watch interval
 	ticker := time.NewTicker(time.Duration(dbTorrent.WatchEvery) * time.Minute)
 	defer ticker.Stop() // Important to stop the ticker when the function exits
