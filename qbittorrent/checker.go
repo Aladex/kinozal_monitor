@@ -8,6 +8,7 @@ import (
 	"kinozaltv_monitor/kinozal"
 	logger "kinozaltv_monitor/logging"
 	"kinozaltv_monitor/telegram"
+	"strconv"
 	"time"
 )
 
@@ -206,6 +207,10 @@ func TorrentChecker() {
 					// If watch interval equals to 0 then delete watcher
 					if dbTorrent.WatchEvery == 0 {
 						delete(torrentWatchers, dbTorrent.ID)
+						log.Info("info", "Torrent watcher deleted", map[string]string{
+							"torrent_url":  dbTorrent.Url,
+							"torrent_hash": dbTorrent.Hash,
+						})
 					} else {
 						// Create context for watcher
 						ctx, cancel := context.WithCancel(context.Background())
@@ -215,12 +220,17 @@ func TorrentChecker() {
 							watchEvery: dbTorrent.WatchEvery,
 						}
 						go torrentWorker(ctx, dbTorrent)
+						log.Info("info", "Torrent watcher updated", map[string]string{
+							"torrent_url":  dbTorrent.Url,
+							"torrent_hash": dbTorrent.Hash,
+							"watch_every":  strconv.Itoa(dbTorrent.WatchEvery),
+						})
 					}
 				}
-
 			}
-
 		}
+		// Sleep for 5 seconds
+		time.Sleep(5 * time.Second)
 	}
 }
 
