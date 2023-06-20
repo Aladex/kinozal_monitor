@@ -173,12 +173,30 @@ func torrentChecker(dbTorrent database.Torrent) error {
 	return nil
 }
 
-// TorrentChecker for checking torrents in the database and on the tracker
+// createOrUpdateWatcher creates or updates watcher for torrent
+func createOrUpdateWatcher(dbTorrent database.Torrent, torrentWatchers map[int]*TorrentWatcher) {
+	// Create context for watcher
+	ctx, cancel := context.WithCancel(context.Background())
+	// Create or update watcher
+	torrentWatchers[dbTorrent.ID] = &TorrentWatcher{
+		cancel:     cancel,
+		watchEvery: dbTorrent.WatchEvery,
+	}
+	go torrentWorker(ctx, dbTorrent)
+	log.Info("info", "Torrent watcher created or updated", map[string]string{
+		"torrent_url":  dbTorrent.Url,
+		"torrent_hash": dbTorrent.Hash,
+		"watch_every":  strconv.Itoa(dbTorrent.WatchEvery),
+	})
+}
+
+// TorrentChecker checks torrents in database and qbittorrent
 func TorrentChecker() {
 	log.Info("info", "Checker started", nil)
 	// Get torrent list from database every 5 minutes
 	// And create watcher for every torrent if it has watch interval
-	torrentWatchers = make(map[int]*TorrentWatcher)
+	torrentWatchers := make(map[int]*TorrentWatcher)
+
 	for {
 		// Get torrent list from database
 		dbTorrents, err := database.GetAllRecords(database.DB)
@@ -191,24 +209,11 @@ func TorrentChecker() {
 		for _, dbTorrent := range dbTorrents {
 			if dbTorrent.WatchEvery > 0 {
 				// Check if watcher already exists
-				if _, ok := torrentWatchers[dbTorrent.ID]; !ok {
-					// Create context for watcher
-					ctx, cancel := context.WithCancel(context.Background())
-					// Create watcher
-					torrentWatchers[dbTorrent.ID] = &TorrentWatcher{
-						cancel:     cancel,
-						watchEvery: dbTorrent.WatchEvery,
-					}
-					go torrentWorker(ctx, dbTorrent)
-					log.Info("info", "Torrent watcher created", map[string]string{
-						"torrent_url":  dbTorrent.Url,
-						"torrent_hash": dbTorrent.Hash,
-						"watch_every":  fmt.Sprintf("%d minutes", dbTorrent.WatchEvery),
-					})
-				} else {
+				if watcher, ok := torrentWatchers[dbTorrent.ID]; ok {
 					// If watch interval changed then delete watcher and create new one
-					if torrentWatchers[dbTorrent.ID].watchEvery != dbTorrent.WatchEvery {
-						torrentWatchers[dbTorrent.ID].cancel()
+					if watcher.watchEvery != dbTorrent.WatchEvery {
+						watcher.cancel()
+
 						// If watch interval equals to 0 then delete watcher
 						if dbTorrent.WatchEvery == 0 {
 							delete(torrentWatchers, dbTorrent.ID)
@@ -217,21 +222,11 @@ func TorrentChecker() {
 								"torrent_hash": dbTorrent.Hash,
 							})
 						} else {
-							// Create context for watcher
-							ctx, cancel := context.WithCancel(context.Background())
-							// Create watcher
-							torrentWatchers[dbTorrent.ID] = &TorrentWatcher{
-								cancel:     cancel,
-								watchEvery: dbTorrent.WatchEvery,
-							}
-							go torrentWorker(ctx, dbTorrent)
-							log.Info("info", "Torrent watcher updated", map[string]string{
-								"torrent_url":  dbTorrent.Url,
-								"torrent_hash": dbTorrent.Hash,
-								"watch_every":  strconv.Itoa(dbTorrent.WatchEvery),
-							})
+							createOrUpdateWatcher(dbTorrent, torrentWatchers)
 						}
 					}
+				} else {
+					createOrUpdateWatcher(dbTorrent, torrentWatchers)
 				}
 			}
 		}
