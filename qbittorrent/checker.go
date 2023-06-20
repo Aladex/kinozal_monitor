@@ -100,7 +100,7 @@ func torrentWorker(ctx context.Context, dbTorrent database.Torrent) {
 		log.Error("torrent_checker", err.Error(), nil)
 	}
 
-	// Iniial torrent check
+	// Initial torrent check
 	err = torrentChecker(dbTorrent)
 	if err != nil {
 		log.Error("torrent_checker", err.Error(), nil)
