@@ -20,8 +20,6 @@ type TorrentWatcher struct {
 	watchEvery int
 }
 
-var torrentWatchers map[int]*TorrentWatcher
-
 // torrentAdder
 func torrentAdder(torrentData common.TorrentData, wsMsg chan string) {
 	torrentInfo, err := kzUser.GetTorrentHash(torrentData.Url)
