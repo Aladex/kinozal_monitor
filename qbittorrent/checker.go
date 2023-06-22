@@ -140,6 +140,8 @@ func torrentChecker(dbTorrent database.Torrent) error {
 		if !addTorrentToQbittorrent(qbTorrent, true) {
 			return fmt.Errorf("torrent not added to qbittorrent")
 		}
+		// Return nil because torrent added to qbittorrent
+		return nil
 	}
 
 	// Get torrent info from kinozal.tv
@@ -156,6 +158,7 @@ func torrentChecker(dbTorrent database.Torrent) error {
 
 	// If hash is not equal then update torrent
 	if torrentInfo.Hash != dbTorrent.Hash {
+		// Log that torrent hash is not equal
 		// Update title of torrent
 		torrentInfo.Title, err = kzUser.GetTitleFromUrl(dbTorrent.Url)
 		if err != nil {
