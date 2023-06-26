@@ -93,16 +93,12 @@ func torrentWorker(ctx context.Context, dbTorrent database.Torrent) {
 	})
 
 	// Check torrent
-	result, err := torrentChecker(dbTorrent)
-	if err != nil || !result {
+	updatedTorrent, err := torrentChecker(dbTorrent)
+	if err != nil {
 		log.Error("torrent_checker", err.Error(), nil)
 	} else {
-		// Cancel the worker if torrent added to qbittorrent
-		log.Info("info", "Torrent added to qbittorrent", map[string]string{
-			"torrent_url":  dbTorrent.Url,
-			"torrent_hash": dbTorrent.Hash,
-		})
-		return // Stop the worker
+		// Update torrent
+		dbTorrent = updatedTorrent
 	}
 
 	// Create ticker for checking torrent every watch interval
@@ -113,16 +109,12 @@ func torrentWorker(ctx context.Context, dbTorrent database.Torrent) {
 		select {
 		case <-ticker.C:
 			// Check torrent
-			result, err := torrentChecker(dbTorrent)
-			if err != nil || !result {
+			updatedTorrent, err := torrentChecker(dbTorrent)
+			if err != nil {
 				log.Error("torrent_checker", err.Error(), nil)
 			} else {
-				// Cancel the worker if torrent added to qbittorrent
-				log.Info("info", "Torrent added to qbittorrent", map[string]string{
-					"torrent_url":  dbTorrent.Url,
-					"torrent_hash": dbTorrent.Hash,
-				})
-				return // Stop the worker
+				// Update torrent
+				dbTorrent = updatedTorrent
 			}
 		case <-ctx.Done():
 			// Context cancelled, stop the worker
@@ -135,13 +127,13 @@ func torrentWorker(ctx context.Context, dbTorrent database.Torrent) {
 	}
 }
 
-func torrentChecker(dbTorrent database.Torrent) (bool, error) {
+func torrentChecker(dbTorrent database.Torrent) (database.Torrent, error) {
 	// Get torrent list from qbittorrent
 	qbTorrents, err := GlobalQbittorrentUser.GetTorrentHashList()
 	if err != nil {
 		log.Error("get_qb_torrents", err.Error(), nil)
 		handleQbittorrentError(err)
-		return false, err
+		return dbTorrent, err
 	}
 
 	qbTorrent := Torrent{
@@ -150,42 +142,45 @@ func torrentChecker(dbTorrent database.Torrent) (bool, error) {
 		Name:  dbTorrent.Name,
 		Url:   dbTorrent.Url,
 	}
+
+	// If torrent does not exist in qbittorrent
 	if !contains(qbTorrents, dbTorrent.Hash) {
 		if !addTorrentToQbittorrent(qbTorrent, true) {
-			return false, fmt.Errorf("torrent not added to qbittorrent")
+			return dbTorrent, fmt.Errorf("torrent not added to qbittorrent")
 		}
-		// Return nil because torrent added to qbittorrent
-		return true, nil
-	}
-
-	// Get torrent info from kinozal.tv
-	log.Info("info", "Get torrent info from kinozal.tv", map[string]string{
-		"torrent_url":  dbTorrent.Url,
-		"torrent_hash": dbTorrent.Hash,
-		"reason":       "check if torrent exists in kinozal.tv",
-	})
-	torrentInfo, err := kzUser.GetTorrentHash(dbTorrent.Url)
-	if err != nil {
-		log.Error("get_torrent_info", err.Error(), nil)
-		return false, err
-	}
-
-	// If hash is not equal then update torrent
-	if torrentInfo.Hash != dbTorrent.Hash {
-		// Log that torrent hash is not equal
-		// Update title of torrent
-		torrentInfo.Title, err = kzUser.GetTitleFromUrl(dbTorrent.Url)
+	} else {
+		// Get torrent info from kinozal.tv
+		log.Info("info", "Get torrent info from kinozal.tv", map[string]string{
+			"torrent_url":  dbTorrent.Url,
+			"torrent_hash": dbTorrent.Hash,
+			"reason":       "check if torrent exists in kinozal.tv",
+		})
+		torrentInfo, err := kzUser.GetTorrentHash(dbTorrent.Url)
 		if err != nil {
-			log.Error("get_title_from_url", err.Error(), nil)
-			// Set title from database
-			torrentInfo.Title = dbTorrent.Title
+			log.Error("get_torrent_info", err.Error(), nil)
+			return dbTorrent, err
 		}
-		if !updateTorrentInQbittorrent(qbTorrent, torrentInfo) {
-			log.Error("update_torrent_in_qbittorrent", "Torrent not updated", nil)
-			return false, fmt.Errorf("torrent not updated")
+
+		// If hash is not equal then update torrent
+		if torrentInfo.Hash != dbTorrent.Hash {
+			// Log that torrent hash is not equal
+			// Update title of torrent
+			torrentInfo.Title, err = kzUser.GetTitleFromUrl(dbTorrent.Url)
+			if err != nil {
+				log.Error("get_title_from_url", err.Error(), nil)
+				// Set title from database
+				torrentInfo.Title = dbTorrent.Title
+			}
+			if !updateTorrentInQbittorrent(qbTorrent, torrentInfo) {
+				log.Error("update_torrent_in_qbittorrent", "Torrent not updated", nil)
+				return dbTorrent, fmt.Errorf("torrent not updated in qbittorrent")
+			}
+			// Update torrent hash for dbTorrent
+			dbTorrent.Hash = torrentInfo.Hash
 		}
 	}
-	return true, nil
+
+	return dbTorrent, nil
 }
 
 // createOrUpdateWatcher creates or updates watcher for torrent
