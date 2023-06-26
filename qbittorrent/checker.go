@@ -93,9 +93,16 @@ func torrentWorker(ctx context.Context, dbTorrent database.Torrent) {
 	})
 
 	// Check torrent
-	err := torrentChecker(dbTorrent)
-	if err != nil {
+	result, err := torrentChecker(dbTorrent)
+	if err != nil || !result {
 		log.Error("torrent_checker", err.Error(), nil)
+	} else {
+		// Cancel the worker if torrent added to qbittorrent
+		log.Info("info", "Torrent added to qbittorrent", map[string]string{
+			"torrent_url":  dbTorrent.Url,
+			"torrent_hash": dbTorrent.Hash,
+		})
+		return // Stop the worker
 	}
 
 	// Create ticker for checking torrent every watch interval
@@ -106,9 +113,16 @@ func torrentWorker(ctx context.Context, dbTorrent database.Torrent) {
 		select {
 		case <-ticker.C:
 			// Check torrent
-			err := torrentChecker(dbTorrent)
-			if err != nil {
+			result, err := torrentChecker(dbTorrent)
+			if err != nil || !result {
 				log.Error("torrent_checker", err.Error(), nil)
+			} else {
+				// Cancel the worker if torrent added to qbittorrent
+				log.Info("info", "Torrent added to qbittorrent", map[string]string{
+					"torrent_url":  dbTorrent.Url,
+					"torrent_hash": dbTorrent.Hash,
+				})
+				return // Stop the worker
 			}
 		case <-ctx.Done():
 			// Context cancelled, stop the worker
@@ -121,13 +135,13 @@ func torrentWorker(ctx context.Context, dbTorrent database.Torrent) {
 	}
 }
 
-func torrentChecker(dbTorrent database.Torrent) error {
+func torrentChecker(dbTorrent database.Torrent) (bool, error) {
 	// Get torrent list from qbittorrent
 	qbTorrents, err := GlobalQbittorrentUser.GetTorrentHashList()
 	if err != nil {
 		log.Error("get_qb_torrents", err.Error(), nil)
 		handleQbittorrentError(err)
-		return err
+		return false, err
 	}
 
 	qbTorrent := Torrent{
@@ -138,10 +152,10 @@ func torrentChecker(dbTorrent database.Torrent) error {
 	}
 	if !contains(qbTorrents, dbTorrent.Hash) {
 		if !addTorrentToQbittorrent(qbTorrent, true) {
-			return fmt.Errorf("torrent not added to qbittorrent")
+			return false, fmt.Errorf("torrent not added to qbittorrent")
 		}
 		// Return nil because torrent added to qbittorrent
-		return nil
+		return true, nil
 	}
 
 	// Get torrent info from kinozal.tv
@@ -153,7 +167,7 @@ func torrentChecker(dbTorrent database.Torrent) error {
 	torrentInfo, err := kzUser.GetTorrentHash(dbTorrent.Url)
 	if err != nil {
 		log.Error("get_torrent_info", err.Error(), nil)
-		return err
+		return false, err
 	}
 
 	// If hash is not equal then update torrent
@@ -168,10 +182,10 @@ func torrentChecker(dbTorrent database.Torrent) error {
 		}
 		if !updateTorrentInQbittorrent(qbTorrent, torrentInfo) {
 			log.Error("update_torrent_in_qbittorrent", "Torrent not updated", nil)
-			return fmt.Errorf("torrent not updated")
+			return false, fmt.Errorf("torrent not updated")
 		}
 	}
-	return nil
+	return true, nil
 }
 
 // createOrUpdateWatcher creates or updates watcher for torrent
