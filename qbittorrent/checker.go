@@ -200,6 +200,34 @@ func createOrUpdateWatcher(dbTorrent database.Torrent, torrentWatchers map[int]*
 	})
 }
 
+func containsTorrent(dbTorrents []database.Torrent, id int) bool {
+	for _, a := range dbTorrents {
+		if a.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func deleteRemovedTorrents(dbTorrents []database.Torrent, torrentWatchers map[int]*TorrentWatcher) {
+	// Find ID of torrents that are not in database
+	var torrentsToDelete []int
+	for id := range torrentWatchers {
+		if !containsTorrent(dbTorrents, id) {
+			torrentsToDelete = append(torrentsToDelete, id)
+		}
+	}
+
+	// Delete watchers
+	for _, id := range torrentsToDelete {
+		torrentWatchers[id].cancel()
+		delete(torrentWatchers, id)
+		log.Info("info", "Torrent watcher deleted", map[string]string{
+			"torrent_id": strconv.Itoa(id),
+		})
+	}
+}
+
 // TorrentChecker checks torrents in database and qbittorrent
 func TorrentChecker() {
 	log.Info("info", "Checker started", nil)
@@ -214,6 +242,9 @@ func TorrentChecker() {
 			log.Error("get_db_records", err.Error(), nil)
 			return
 		}
+
+		// Delete removed torrents
+		deleteRemovedTorrents(dbTorrents, torrentWatchers)
 
 		// Iterate over torrents and create watcher for every torrent with watch interval
 		for _, dbTorrent := range dbTorrents {
