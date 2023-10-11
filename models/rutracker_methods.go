@@ -2,10 +2,12 @@ package models
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -62,6 +64,74 @@ func (t *TrackerUser) RTLogin(loginUrl, userAgent, baseURL string) error {
 	}
 
 	return nil
+}
+
+func getTokenFromScript(htmlData []byte) []byte {
+	fromTokenRegExp := regexp.MustCompile(`form_token: '([a-z0-9]+)',`)
+	formToken := fromTokenRegExp.FindSubmatch(htmlData)
+	if len(formToken) == 0 {
+		return nil
+	}
+	return formToken[1]
+}
+
+func (t *TrackerUser) DownloadRTTorrentFile(originalUrl, userAgent string) ([]byte, error) {
+	// Get html of the torrent page
+	resp, err := t.Client.Get(originalUrl)
+	if err != nil {
+		log.Error("rutracker_download_torrent", "Error while getting torrent page", map[string]string{"error": err.Error()})
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// Read response body and decode it from windows-1251 to utf-8
+	body, err := io.ReadAll(kinozal1251decoder(resp.Body))
+	if err != nil {
+		log.Error("rutracker_download_torrent", "Error while reading response body", map[string]string{"error": err.Error()})
+		return nil, err
+	}
+
+	// Get token from html
+	token := getTokenFromScript(body)
+	if token == nil {
+		log.Error("rutracker_download_torrent", "Error while getting token from html", map[string]string{"error": err.Error()})
+		return nil, err
+	}
+
+	// Get topic id from url
+	u, err := url.Parse(originalUrl)
+	if err != nil {
+		log.Error("rutracker_download_torrent", "Error while parsing url", map[string]string{"error": err.Error()})
+		return nil, err
+	}
+
+	// if query have no id parameter, then return error
+	if u.Query().Get("id") == "" {
+		log.Error("rutracker_download_torrent", "Error while getting id from url", map[string]string{"error": err.Error()})
+		return nil, err
+	}
+
+	// Get torrent file
+	resp, err = t.Client.PostForm(fmt.Sprintf("%s/forum/dl.php?t=%s", rtBaseURL, u.Query().Get("id")), url.Values{"form_token": {string(token)}})
+	if err != nil {
+		log.Error("rutracker_download_torrent", "Error while getting torrent file", map[string]string{"error": err.Error()})
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	body, err = io.ReadAll(resp.Body)
+	if err != nil {
+		log.Error("rutracker_download_torrent", "Error while reading response body", map[string]string{"error": err.Error()})
+		return nil, err
+	}
+
+	// Check if body is html
+	if !CheckBodyIsTorrentFile(body) {
+		return nil, fmt.Errorf("body is not torrent file")
+	}
+
+	return body, nil
 }
 
 func init() {
