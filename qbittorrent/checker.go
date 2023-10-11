@@ -7,6 +7,7 @@ import (
 	"kinozaltv_monitor/database"
 	"kinozaltv_monitor/kinozal"
 	logger "kinozaltv_monitor/logging"
+	"kinozaltv_monitor/models"
 	"kinozaltv_monitor/telegram"
 	"strconv"
 	"time"
@@ -329,7 +330,7 @@ func addTorrentToQbittorrent(dbTorrent Torrent, sendTgMessage bool) bool {
 	return true
 }
 
-func updateTorrentInQbittorrent(dbTorrent Torrent, torrentInfo kinozal.KinozalTorrent) bool {
+func updateTorrentInQbittorrent(dbTorrent Torrent, torrentInfo models.Torrent) bool {
 	err := GlobalQbittorrentUser.DeleteTorrent(dbTorrent.Hash, false)
 	if err != nil {
 		log.Error("delete_torrent", err.Error(), nil)

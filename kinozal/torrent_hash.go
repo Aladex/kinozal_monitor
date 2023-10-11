@@ -3,23 +3,16 @@ package kinozal
 import (
 	"errors"
 	"golang.org/x/net/html"
+	"kinozaltv_monitor/models"
 	"net/http"
 	"strings"
 )
 
-// KinozalTorrent is a struct for storing torrent data
-type KinozalTorrent struct {
-	Title string
-	Hash  string
-	Name  string
-	Url   string
-}
-
 var ErrHashIsEmpty = errors.New("hash is empty")
 
 // GetTorrentHash is a method for getting torrent hash from kinozal.tv
-func (t *TrackerUser) GetTorrentHash(url string) (KinozalTorrent, error) {
-	var kzTorrent KinozalTorrent
+func (t *TrackerUser) GetTorrentHash(url string) (models.Torrent, error) {
+	var kzTorrent models.Torrent
 
 	// Convert url to detailed url
 	detailedUrl, err := generateUrl(url, "details")
@@ -57,8 +50,8 @@ func (t *TrackerUser) GetTorrentHash(url string) (KinozalTorrent, error) {
 	return kzTorrent, nil
 }
 
-func (t *TrackerUser) attemptRequest(url string) (KinozalTorrent, error) {
-	var kzTorrent KinozalTorrent
+func (t *TrackerUser) attemptRequest(url string) (models.Torrent, error) {
+	var kzTorrent models.Torrent
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return kzTorrent, err
@@ -91,8 +84,8 @@ func (t *TrackerUser) handleRequestError(err error, url string) {
 	}
 }
 
-func (t *TrackerUser) parseHtml(doc *html.Node) KinozalTorrent {
-	var kzTorrent KinozalTorrent
+func (t *TrackerUser) parseHtml(doc *html.Node) models.Torrent {
+	var kzTorrent models.Torrent
 
 	var f func(*html.Node)
 
