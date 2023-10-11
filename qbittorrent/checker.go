@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"kinozaltv_monitor/common"
+	"kinozaltv_monitor/config"
 	"kinozaltv_monitor/database"
-	"kinozaltv_monitor/kinozal"
 	logger "kinozaltv_monitor/logging"
 	"kinozaltv_monitor/models"
 	"kinozaltv_monitor/telegram"
@@ -14,7 +14,8 @@ import (
 )
 
 var log = logger.New("qbittorrent")
-var kzUser = kinozal.KinozalUser
+var kzUser = models.KinozalUser
+var globalConfig = config.GlobalConfig
 
 type TorrentWatcher struct {
 	cancel     context.CancelFunc
@@ -39,7 +40,7 @@ func torrentAdder(torrentData common.TorrentData, wsMsg chan string) {
 	}
 
 	// Get title from original url
-	title, err := kzUser.GetTitleFromUrl(torrentData.Url)
+	title, err := kzUser.GetTitleFromUrl(torrentData.Url, globalConfig.UserAgent)
 	if err != nil {
 		log.Error("get_title_from_url", err.Error(), nil)
 		wsMsg <- "500"
@@ -166,7 +167,7 @@ func torrentChecker(dbTorrent database.Torrent) (database.Torrent, error) {
 		if torrentInfo.Hash != dbTorrent.Hash {
 			// Log that torrent hash is not equal
 			// Update title of torrent
-			torrentInfo.Title, err = kzUser.GetTitleFromUrl(dbTorrent.Url)
+			torrentInfo.Title, err = kzUser.GetTitleFromUrl(dbTorrent.Url, globalConfig.UserAgent)
 			if err != nil {
 				log.Error("get_title_from_url", err.Error(), nil)
 				// Set title from database
@@ -315,7 +316,7 @@ func contains(s []Torrent, e string) bool {
 }
 
 func addTorrentToQbittorrent(dbTorrent Torrent, sendTgMessage bool) bool {
-	torrentFile, err := kzUser.DownloadTorrentFile(dbTorrent.Url)
+	torrentFile, err := kzUser.DownloadTorrentFile(dbTorrent.Url, globalConfig.UserAgent)
 	if err != nil {
 		log.Info("download_torrent_file", err.Error(), map[string]string{
 			"torrent_url": dbTorrent.Url,
@@ -344,7 +345,7 @@ func addTorrentToQbittorrent(dbTorrent Torrent, sendTgMessage bool) bool {
 	}
 
 	// Get title from kinozal.tv
-	torrentInfo.Title, err = kzUser.GetTitleFromUrl(dbTorrent.Url)
+	torrentInfo.Title, err = kzUser.GetTitleFromUrl(dbTorrent.Url, globalConfig.UserAgent)
 	if err != nil {
 		log.Error("get_title_from_url", err.Error(), nil)
 		return false

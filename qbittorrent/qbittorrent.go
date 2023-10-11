@@ -3,7 +3,6 @@ package qbittorrent
 import (
 	"bytes"
 	"encoding/json"
-	"kinozaltv_monitor/config"
 	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
@@ -11,8 +10,6 @@ import (
 	"os"
 	"sort"
 )
-
-var globalConfig = config.GlobalConfig
 
 // QbittorrentUser is a struct for storing user data
 type QbittorrentUser struct {
