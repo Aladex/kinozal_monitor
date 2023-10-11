@@ -174,7 +174,7 @@ func torrentChecker(dbTorrent database.Torrent) (database.Torrent, error) {
 				torrentInfo.Title = dbTorrent.Title
 			}
 			if !updateTorrentInQbittorrent(qbTorrent, torrentInfo) {
-				log.Error("update_torrent_in_qbittorrent", "Torrent not updated", nil)
+				log.Error("update_torrent_in_qbittorrent", "Torrent is not updated", nil)
 				return dbTorrent, fmt.Errorf("torrent not updated in qbittorrent")
 			}
 			// Update torrent hash for dbTorrent
