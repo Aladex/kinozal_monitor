@@ -134,6 +134,34 @@ func (t *TrackerUser) DownloadRTTorrentFile(originalUrl, userAgent string) ([]by
 	return body, nil
 }
 
+func (t *TrackerUser) GetRTTorrentHash(url string) (Torrent, error) {
+	// Find in html magnet like <a href="magnet:?xt=urn:btih:FA15CBCA2D29BB5605FAA6033A4306A0EC2DA525&tr=http%3A%2F%2Fbt4.t-ru.org%2Fann%3Fmagnet" class="med magnet-link" data-topic_id="6346244" title="FA15CBCA2D29BB5605FAA6033A4306A0EC2DA525">
+	// Get html of the torrent page
+	resp, err := t.Client.Get(url)
+	if err != nil {
+		log.Error("rutracker_get_torrent_hash", "Error while getting torrent page", map[string]string{"error": err.Error()})
+		return Torrent{}, err
+	}
+	defer resp.Body.Close()
+
+	// Read response body and decode it from windows-1251 to utf-8
+	body, err := io.ReadAll(kinozal1251decoder(resp.Body))
+	if err != nil {
+		log.Error("rutracker_get_torrent_hash", "Error while reading response body", map[string]string{"error": err.Error()})
+		return Torrent{}, err
+	}
+
+	// Get magnet link from html
+	magnetLinkRegExp := regexp.MustCompile(`href="magnet:\?xt=urn:btih:([a-z0-9]+)&`)
+	magnetLink := magnetLinkRegExp.FindSubmatch(body)
+	if len(magnetLink) == 0 {
+		log.Error("rutracker_get_torrent_hash", "Error while getting magnet link from html", map[string]string{"error": err.Error()})
+		return Torrent{}, err
+	}
+
+	return Torrent{Hash: string(magnetLink[1])}, nil
+}
+
 func init() {
 	RTUser = &TrackerUser{
 		Username: globalConfig.RtUsername,
