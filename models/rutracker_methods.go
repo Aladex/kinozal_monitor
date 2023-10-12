@@ -135,7 +135,6 @@ func (t *TrackerUser) DownloadRTTorrentFile(originalUrl, userAgent string) ([]by
 }
 
 func (t *TrackerUser) GetRTTorrentHash(url string) (Torrent, error) {
-	// Find in html magnet like <a href="magnet:?xt=urn:btih:FA15CBCA2D29BB5605FAA6033A4306A0EC2DA525&tr=http%3A%2F%2Fbt4.t-ru.org%2Fann%3Fmagnet" class="med magnet-link" data-topic_id="6346244" title="FA15CBCA2D29BB5605FAA6033A4306A0EC2DA525">
 	// Get html of the torrent page
 	resp, err := t.Client.Get(url)
 	if err != nil {

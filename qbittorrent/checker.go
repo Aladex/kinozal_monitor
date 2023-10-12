@@ -15,6 +15,7 @@ import (
 
 var log = logger.New("qbittorrent")
 var kzUser = models.KinozalUser
+var rtUser = models.RTUser
 var globalConfig = config.GlobalConfig
 
 type TorrentWatcher struct {
@@ -315,7 +316,7 @@ func contains(s []Torrent, e string) bool {
 	return false
 }
 
-func addTorrentToQbittorrent(dbTorrent Torrent, sendTgMessage bool) bool {
+func kinozalAction(dbTorrent Torrent) (models.Torrent, error) {
 	torrentFile, err := kzUser.DownloadTorrentFile(dbTorrent.Url, globalConfig.UserAgent)
 	if err != nil {
 		log.Info("download_torrent_file", err.Error(), map[string]string{
@@ -328,37 +329,58 @@ func addTorrentToQbittorrent(dbTorrent Torrent, sendTgMessage bool) bool {
 		err = GlobalQbittorrentUser.AddTorrentByMagnet(dbTorrent.Hash, dbTorrent.SavePath)
 		if err != nil {
 			log.Error("add_torrent_by_magnet", err.Error(), nil)
-			return false
+			return models.Torrent{}, err
 		}
 	} else {
 		err = GlobalQbittorrentUser.AddTorrent(dbTorrent.Hash, dbTorrent.SavePath, torrentFile)
 		if err != nil {
 			log.Error("add_torrent", err.Error(), nil)
-			return false
+			return models.Torrent{}, err
 		}
 	}
 
 	torrentInfo, err := kzUser.GetTorrentHash(dbTorrent.Url)
 	if err != nil {
 		log.Error("get_torrent_info", err.Error(), nil)
-		return false
+		return models.Torrent{}, err
 	}
 
 	// Get title from kinozal.tv
 	torrentInfo.Title, err = kzUser.GetTitleFromUrl(dbTorrent.Url, globalConfig.UserAgent)
 	if err != nil {
 		log.Error("get_title_from_url", err.Error(), nil)
-		return false
+		return models.Torrent{}, err
 	}
 
+	return torrentInfo, nil
+}
+
+func addTorrentToQbittorrent(dbTorrent Torrent, sendTgMessage bool) bool {
+
+	// Check what of torrent tracker in url
+	trackerDomain := common.GetTrackerDomain(dbTorrent.Url)
+	var torrentInfo models.Torrent
+	var err error
+	switch trackerDomain {
+	case "kinozal.tv":
+		torrentInfo, err = kinozalAction(dbTorrent)
+		if err != nil {
+			log.Error("kinozal_action", err.Error(), nil)
+			return false
+		}
+	case "rutracker.org":
+		torrentInfo, err = rtUser.GetRTTorrentHash(dbTorrent.Url)
+		if err != nil {
+			log.Error("get_rt_torrent_hash", err.Error(), nil)
+			return false
+		}
+	}
 	if sendTgMessage {
-		err = telegram.SendTorrentAction("added", globalConfig.TelegramToken, torrentInfo)
+		err := telegram.SendTorrentAction("added", globalConfig.TelegramToken, torrentInfo)
 		if err != nil {
 			log.Error("send_telegram_notification", err.Error(), nil)
 		}
-
 	}
-
 	return true
 }
 
