@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"kinozaltv_monitor/config"
-	"kinozaltv_monitor/kinozal"
+	"kinozaltv_monitor/models"
 	"net/http"
 	"text/template"
 )
@@ -70,8 +70,8 @@ func SendCommand(token string, m BaseChat) error {
 	return nil
 }
 
-// SendTorrentAdded sends a message about added torrent
-func SendTorrentAction(action, token string, torrentInfo kinozal.KinozalTorrent) error {
+// SendTorrentAction sends a message about added torrent
+func SendTorrentAction(action, token string, torrentInfo models.Torrent) error {
 	var tpl bytes.Buffer
 
 	switch action {

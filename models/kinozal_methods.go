@@ -1,7 +1,8 @@
-package kinozal
+package models
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"golang.org/x/net/html"
 	"golang.org/x/text/encoding/charmap"
@@ -18,6 +19,7 @@ import (
 
 var log = logger.New("kinozal_package")
 var globalConfig = config.GlobalConfig
+var KinozalUser *TrackerUser
 
 var (
 	baseURL   = "https://kinozal.tv"
@@ -25,22 +27,10 @@ var (
 	userAgent = globalConfig.UserAgent
 )
 
-// TrackerUser is a struct for storing user data
-type TrackerUser struct {
-	Username string
-	Password string
-	Client   *http.Client
-}
+var ErrHashIsEmpty = errors.New("hash is empty")
 
-// KinozalUser is a global variable for storing user data
-var KinozalUser *TrackerUser
-
-func kinozal1251decoder(r io.Reader) io.Reader {
-	return charmap.Windows1251.NewDecoder().Reader(r)
-}
-
-// Login is a method for logging in to the tracker
-func (t *TrackerUser) Login() error {
+// KinozalLogin is a method for logging in to the tracker kinozal.tv
+func (t *TrackerUser) KinozalLogin(loginURL, userAgent, baseURL string) error {
 	jar, _ := cookiejar.New(nil)
 	t.Client = &http.Client{
 		Jar: jar,
@@ -128,47 +118,8 @@ func (t *TrackerUser) DropLoginSession() {
 	t.Client.Jar = nil
 }
 
-// generateUrl is a function for generating url for kinozal.tv for different purposes
-func generateUrl(originalURL, linkType string) (string, error) {
-	u, err := url.Parse(originalURL)
-	if err != nil {
-		return "", err
-	}
-
-	// if query have no id parameter, then return error
-	if u.Query().Get("id") == "" {
-		return "", fmt.Errorf("query have no id parameter")
-	}
-
-	switch linkType {
-	case "details":
-		u.Path = "/get_srv_details.php"
-
-		values, err := url.ParseQuery(u.RawQuery)
-		if err != nil {
-			return "", err
-		}
-		values.Set("action", "2")
-
-		u.RawQuery = values.Encode()
-	case "download":
-		u.Path = "/download.php"
-	}
-
-	return u.String(), nil
-}
-
-// CheckBodyIsTorrentFile is a function for checking if body is torrent file but not html
-func CheckBodyIsTorrentFile(body []byte) bool {
-	// Check if body is html
-	if bytes.Contains(body, []byte("<!DOCTYPE HTML>")) {
-		return false
-	}
-	return true
-}
-
 // DownloadTorrentFile is a method for downloading torrent file from kinozal.tv
-func (t *TrackerUser) DownloadTorrentFile(originalUrl string) ([]byte, error) {
+func (t *TrackerUser) DownloadTorrentFile(originalUrl, userAgent string) ([]byte, error) {
 	downloadUrl, err := generateUrl(originalUrl, "download")
 	if err != nil {
 		log.Error("kinozal_download_torrent_file", "Error while generating download url", map[string]string{"error": err.Error()})
@@ -203,7 +154,7 @@ func (t *TrackerUser) DownloadTorrentFile(originalUrl string) ([]byte, error) {
 	return body, nil
 }
 
-func (t *TrackerUser) GetTitleFromUrl(originalUrl string) (string, error) {
+func (t *TrackerUser) GetTitleFromUrl(originalUrl, userAgent string) (string, error) {
 	req, err := http.NewRequest("GET", originalUrl, nil)
 	if err != nil {
 		return "", err
@@ -249,6 +200,154 @@ func (t *TrackerUser) GetTitleFromUrl(originalUrl string) (string, error) {
 	return string(decodedTitle), nil
 }
 
+func kinozal1251decoder(r io.Reader) io.Reader {
+	return charmap.Windows1251.NewDecoder().Reader(r)
+}
+
+// generateUrl is a function for generating url for kinozal.tv for different purposes
+func generateUrl(originalURL, linkType string) (string, error) {
+	u, err := url.Parse(originalURL)
+	if err != nil {
+		return "", err
+	}
+
+	// if query have no id parameter, then return error
+	if u.Query().Get("id") == "" {
+		return "", fmt.Errorf("query have no id parameter")
+	}
+
+	switch linkType {
+	case "details":
+		u.Path = "/get_srv_details.php"
+
+		values, err := url.ParseQuery(u.RawQuery)
+		if err != nil {
+			return "", err
+		}
+		values.Set("action", "2")
+
+		u.RawQuery = values.Encode()
+	case "download":
+		u.Path = "/download.php"
+	}
+
+	return u.String(), nil
+}
+
+// CheckBodyIsTorrentFile is a function for checking if body is torrent file but not html
+func CheckBodyIsTorrentFile(body []byte) bool {
+	// Check if body is html
+	if bytes.Contains(body, []byte("<!DOCTYPE HTML>")) {
+		return false
+	}
+	return true
+}
+
+// GetTorrentHash is a method for getting torrent hash from kinozal.tv
+func (t *TrackerUser) GetTorrentHash(url string) (Torrent, error) {
+	var kzTorrent Torrent
+
+	// Convert url to detailed url
+	detailedUrl, err := generateUrl(url, "details")
+	if err != nil {
+		return kzTorrent, err
+	}
+
+	for i := 0; i < 10; i++ {
+		kzTorrent, err = t.attemptRequest(detailedUrl)
+		if err != nil {
+			// Handle error and maybe relogin
+			t.handleRequestError(err, url)
+		} else if kzTorrent.Hash != "" {
+			// If we get hash successfully, break the loop
+			break
+		} else {
+			// If we get empty hash, relogin
+			t.Client.Jar = nil
+			err = t.KinozalLogin(loginURL, userAgent, baseURL)
+			if err != nil {
+				log.Error("kinozal_login_err", err.Error(), map[string]string{"url": url})
+			}
+		}
+	}
+
+	// If hash is still empty after 10 attempts, handle as a special case
+	if kzTorrent.Hash == "" {
+		// Return custom error with text "hash is empty"
+		return kzTorrent, ErrHashIsEmpty
+	}
+
+	// Set torrent url
+	kzTorrent.Url = url
+
+	return kzTorrent, nil
+}
+
+func (t *TrackerUser) attemptRequest(url string) (Torrent, error) {
+	var kzTorrent Torrent
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return kzTorrent, err
+	}
+
+	req.Header.Set("User-Agent", userAgent)
+
+	resp, err := t.Client.Do(req)
+	if err != nil {
+		return kzTorrent, err
+	}
+	defer resp.Body.Close()
+
+	doc, err := html.Parse(resp.Body)
+	if err != nil {
+		return kzTorrent, err
+	}
+
+	kzTorrent = t.parseHtml(doc)
+
+	return kzTorrent, nil
+}
+
+func (t *TrackerUser) handleRequestError(err error, url string) {
+	log.Error("kinozal_get_torrent_hash", err.Error(), map[string]string{"url": url})
+	t.Client.Jar = nil
+	err = t.KinozalLogin(baseURL, userAgent, loginURL)
+	if err != nil {
+		log.Error("kinozal_login_err", err.Error(), map[string]string{"url": url})
+	}
+}
+
+func (t *TrackerUser) parseHtml(doc *html.Node) Torrent {
+	var kzTorrent Torrent
+
+	var f func(*html.Node)
+
+	f = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "li" {
+			for c := n.FirstChild; c != nil; c = c.NextSibling {
+				if c.Type == html.ElementNode && c.Data == "div" {
+					for _, a := range c.Attr {
+						if a.Key == "class" && a.Val == "b" {
+							kzTorrent.Name = c.FirstChild.Data
+						}
+					}
+				}
+				if strings.Contains(c.Data, "Инфо хеш: ") {
+					kzTorrent.Hash = strings.TrimPrefix(c.Data, "Инфо хеш: ")
+					kzTorrent.Hash = strings.ToLower(strings.TrimSpace(kzTorrent.Hash))
+				}
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			f(c)
+		}
+	}
+
+	f(doc)
+
+	return kzTorrent
+}
+
 func init() {
 	// Initialize user
 	KinozalUser = &TrackerUser{
@@ -256,7 +355,7 @@ func init() {
 		Password: globalConfig.KinozalPassword,
 	}
 
-	err := KinozalUser.Login()
+	err := KinozalUser.KinozalLogin(loginURL, userAgent, baseURL)
 	if err != nil {
 		log.Error("kinozal_init", "Error while logging in", map[string]string{"error": err.Error()})
 		// If error is not nil, then exit

@@ -13,6 +13,8 @@ type AppConfig struct {
 	QBUrl           string
 	KinozalUsername string
 	KinozalPassword string
+	RtUsername      string
+	RtPassword      string
 	TelegramChatId  string
 	TelegramToken   string
 	ListenPort      string
@@ -43,6 +45,10 @@ func loadConfig() error {
 		"kinozal": {
 			"KZ_USERNAME": &GlobalConfig.KinozalUsername,
 			"KZ_PASSWORD": &GlobalConfig.KinozalPassword,
+		},
+		"rutracker": {
+			"RT_USERNAME": &GlobalConfig.RtUsername,
+			"RT_PASSWORD": &GlobalConfig.RtPassword,
 		},
 		"telegram": {
 			"TG_ID":    &GlobalConfig.TelegramChatId,
