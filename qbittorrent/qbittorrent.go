@@ -201,6 +201,31 @@ func (qb *QbittorrentUser) DeleteTorrentByName(torrentName string, dropFiles boo
 	return nil
 }
 
+func (qb *QbittorrentUser) GetDownloadPathByHash(torrentHash string) (string, error) {
+	resp, err := qb.Client.Get(globalConfig.QBUrl + "/api/v2/torrents/info?filter=all")
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	var torrents []Torrent
+	err = json.NewDecoder(resp.Body).Decode(&torrents)
+	if err != nil {
+		return "", err
+	}
+
+	// Iterate over torrents and find the one with the given hash
+	var torrentSavePath string
+
+	for _, torrent := range torrents {
+		if torrent.Hash == torrentHash {
+			torrentSavePath = torrent.SavePath
+			break
+		}
+	}
+
+	return torrentSavePath, nil
+}
+
 // GetDownloadPaths is a method for getting a list of download paths from existing torrents
 func (qb *QbittorrentUser) GetDownloadPaths() ([]string, error) {
 	// Get torrent list
