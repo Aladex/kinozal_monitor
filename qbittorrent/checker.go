@@ -385,7 +385,13 @@ func addTorrentToQbittorrent(dbTorrent Torrent, sendTgMessage bool) bool {
 }
 
 func updateTorrentInQbittorrent(dbTorrent Torrent, torrentInfo models.Torrent) bool {
-	err := GlobalQbittorrentUser.DeleteTorrent(dbTorrent.Hash, false)
+	// Find save path of torrent
+	savePath, err := GlobalQbittorrentUser.GetDownloadPathByHash(dbTorrent.Hash)
+	if err == nil {
+		dbTorrent.SavePath = savePath
+	}
+
+	err = GlobalQbittorrentUser.DeleteTorrent(dbTorrent.Hash, false)
 	if err != nil {
 		log.Error("delete_torrent", err.Error(), nil)
 		return false
