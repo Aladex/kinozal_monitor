@@ -47,7 +47,7 @@ jobs:
           tags: |
             aladex/kinozal_monitor:${{ steps.get_version.outputs.VERSION }}
             aladex/kinozal_monitor:latest
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
 
       - name: Set up Go
         uses: actions/setup-go@v4
