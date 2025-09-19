@@ -7,6 +7,7 @@ import (
 	"kinozaltv_monitor/api"
 	"kinozaltv_monitor/common"
 	"kinozaltv_monitor/config"
+	"kinozaltv_monitor/models"
 	"kinozaltv_monitor/qbittorrent"
 	"net/http"
 )
@@ -14,6 +15,9 @@ import (
 var globalConfig = config.GlobalConfig
 
 func main() {
+	// Initialize the tracker manager with all available trackers
+	models.InitializeTrackers(globalConfig)
+
 	wsChan := make(chan string)
 	urlChan := make(chan common.TorrentData, 100)
 

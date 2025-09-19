@@ -1,6 +1,7 @@
 package config
 
 import (
+	"github.com/joho/godotenv"
 	"gopkg.in/ini.v1"
 	"log"
 	"os"
@@ -24,12 +25,36 @@ type AppConfig struct {
 // GlobalConfig is a global variable for storing user data
 var GlobalConfig *AppConfig
 
+func loadEnvFiles() {
+	// Try to load .env files in order of priority
+	envFiles := []string{
+		".env.local", // Local override (highest priority)
+		".env.test",  // Test environment
+		".env",       // Default environment
+	}
+
+	for _, envFile := range envFiles {
+		if _, err := os.Stat(envFile); err == nil {
+			err := godotenv.Load(envFile)
+			if err != nil {
+				log.Printf("Warning: Could not load %s: %v", envFile, err)
+			} else {
+				log.Printf("Loaded environment from %s", envFile)
+				break // Load only the first available file
+			}
+		}
+	}
+}
+
 func loadConfig() error {
+	// Load environment variables from .env files first
+	loadEnvFiles()
+
 	cfg, err := ini.Load("config.ini")
 	if err != nil {
-		log.Printf("Fail to read file: %v", err)
+		log.Printf("Warning: Could not read config.ini: %v (using environment variables)", err)
 	} else {
-		log.Println("Config loaded")
+		log.Println("Config.ini loaded successfully")
 	}
 
 	configFieldMap := map[string]map[string]*string{
