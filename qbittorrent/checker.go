@@ -148,14 +148,19 @@ func torrentChecker(dbTorrent database.Torrent) (database.Torrent, error) {
 	}
 
 	qbTorrent := Torrent{
-		Hash:  dbTorrent.Hash,
-		Title: dbTorrent.Title,
-		Name:  dbTorrent.Name,
-		Url:   dbTorrent.Url,
+		Hash:     dbTorrent.Hash,
+		Title:    dbTorrent.Title,
+		Name:     dbTorrent.Name,
+		Url:      dbTorrent.Url,
+		SavePath: "", // Will be populated if needed
 	}
 
 	// If torrent does not exist in qbittorrent
 	if !contains(qbTorrents, dbTorrent.Hash) {
+		log.Info("torrent_missing", "Torrent not found in qBittorrent, re-adding", map[string]string{
+			"torrent_url":  dbTorrent.Url,
+			"torrent_hash": dbTorrent.Hash,
+		})
 		if !addTorrentToQbittorrent(qbTorrent, true) {
 			return dbTorrent, fmt.Errorf("torrent not added to qbittorrent")
 		}
@@ -168,33 +173,68 @@ func torrentChecker(dbTorrent database.Torrent) (database.Torrent, error) {
 		}
 
 		// Get torrent info from tracker
-		log.Info("info", "Get torrent info from tracker", map[string]string{
+		log.Info("info", "Checking for torrent updates from tracker", map[string]string{
 			"torrent_url":  dbTorrent.Url,
 			"torrent_hash": dbTorrent.Hash,
-			"reason":       "check if torrent exists in tracker",
+			"reason":       "periodic update check",
 		})
 		torrentInfo, err := tracker.GetTorrentHash(dbTorrent.Url)
 		if err != nil {
-			log.Error("get_torrent_info", "Error while getting torrent info", map[string]string{"error": err.Error()})
+			log.Error("get_torrent_info", "Error while getting torrent info from tracker", map[string]string{"error": err.Error()})
 			return dbTorrent, err
 		}
 
 		// If hash is not equal then update torrent
 		if torrentInfo.Hash != dbTorrent.Hash {
-			// Log that torrent hash is not equal
-			// Update title of torrent
+			log.Info("torrent_update_detected", "Torrent hash changed, updating", map[string]string{
+				"torrent_url": dbTorrent.Url,
+				"old_hash":    dbTorrent.Hash,
+				"new_hash":    torrentInfo.Hash,
+			})
+
+			// Get updated title from tracker
 			torrentInfo.Title, err = tracker.GetTitleFromUrl(dbTorrent.Url)
 			if err != nil {
-				log.Error("get_title_from_url", err.Error(), nil)
-				// Set title from database
+				log.Error("get_title_from_url", "Error getting updated title", map[string]string{"error": err.Error()})
+				// Use existing title as fallback
 				torrentInfo.Title = dbTorrent.Title
 			}
+
+			// Set the URL for the torrent info
+			torrentInfo.Url = dbTorrent.Url
+
+			// Get current save path before deletion
+			savePath, err := GlobalQbittorrentUser.GetDownloadPathByHash(dbTorrent.Hash)
+			if err != nil {
+				log.Error("get_download_path", "Error getting download path, using default", map[string]string{"error": err.Error()})
+				savePath = "/downloads" // fallback path
+			}
+			qbTorrent.SavePath = savePath
+
 			if !updateTorrentInQbittorrent(qbTorrent, torrentInfo) {
-				log.Error("update_torrent_in_qbittorrent", "Torrent is not updated", nil)
+				log.Error("update_torrent_in_qbittorrent", "Failed to update torrent in qBittorrent", map[string]string{
+					"torrent_url": dbTorrent.Url,
+					"old_hash":    dbTorrent.Hash,
+					"new_hash":    torrentInfo.Hash,
+				})
 				return dbTorrent, fmt.Errorf("torrent not updated in qbittorrent")
 			}
-			// Update torrent hash for dbTorrent
+
+			// Update the database torrent record with new hash and title
 			dbTorrent.Hash = torrentInfo.Hash
+			dbTorrent.Title = torrentInfo.Title
+			dbTorrent.Name = torrentInfo.Title
+
+			log.Info("torrent_updated_successfully", "Torrent updated successfully", map[string]string{
+				"torrent_url": dbTorrent.Url,
+				"new_hash":    dbTorrent.Hash,
+				"new_title":   dbTorrent.Title,
+			})
+		} else {
+			log.Info("torrent_up_to_date", "Torrent is up to date", map[string]string{
+				"torrent_url":  dbTorrent.Url,
+				"torrent_hash": dbTorrent.Hash,
+			})
 		}
 	}
 
@@ -408,6 +448,17 @@ func addTorrentToQbittorrent(dbTorrent Torrent, sendTgMessage bool) bool {
 			return false
 		}
 
+		// Get title from rutracker.org
+		title, err := tracker.GetTitleFromUrl(dbTorrent.Url)
+		if err != nil {
+			log.Error("get_title_from_url", "Error getting title from URL", map[string]string{"error": err.Error()})
+			// If we can't get the title, use the hash as a fallback
+			title = dbTorrent.Hash
+		}
+
+		// Set the title
+		torrentInfo.Title = title
+
 		// Download the torrent file directly
 		torrentData, err = tracker.DownloadTorrentFile(dbTorrent.Url)
 		if err != nil {
@@ -423,6 +474,12 @@ func addTorrentToQbittorrent(dbTorrent Torrent, sendTgMessage bool) bool {
 		}
 	}
 
+	// Save torrent information to database
+	err = database.CreateOrUpdateRecord(database.DB, torrentInfo)
+	if err != nil {
+		log.Error("create_or_update_record", "Error saving torrent info to database", map[string]string{"error": err.Error()})
+	}
+
 	if sendTgMessage {
 		err := telegram.SendTorrentAction("added", globalConfig.TelegramToken, torrentInfo)
 		if err != nil {
@@ -433,29 +490,88 @@ func addTorrentToQbittorrent(dbTorrent Torrent, sendTgMessage bool) bool {
 }
 
 func updateTorrentInQbittorrent(dbTorrent Torrent, torrentInfo models.Torrent) bool {
-	// Find save path of torrent
-	savePath, err := GlobalQbittorrentUser.GetDownloadPathByHash(dbTorrent.Hash)
-	if err == nil {
-		dbTorrent.SavePath = savePath
-	}
+	log.Info("update_torrent_start", "Starting torrent update process", map[string]string{
+		"torrent_url": dbTorrent.Url,
+		"old_hash":    dbTorrent.Hash,
+		"new_hash":    torrentInfo.Hash,
+	})
 
+	// Find save path of torrent before deletion
+	savePath, err := GlobalQbittorrentUser.GetDownloadPathByHash(dbTorrent.Hash)
+	if err != nil {
+		log.Error("get_download_path", "Error getting download path for torrent", map[string]string{
+			"error":        err.Error(),
+			"torrent_hash": dbTorrent.Hash,
+		})
+		// Use the existing save path as fallback
+		if dbTorrent.SavePath != "" {
+			savePath = dbTorrent.SavePath
+		} else {
+			savePath = "/downloads" // default fallback
+		}
+	}
+	dbTorrent.SavePath = savePath
+
+	// Delete old torrent from qBittorrent (keep files)
 	err = GlobalQbittorrentUser.DeleteTorrent(dbTorrent.Hash, false)
 	if err != nil {
-		log.Error("delete_torrent", err.Error(), nil)
+		log.Error("delete_torrent", "Error deleting old torrent from qBittorrent", map[string]string{
+			"error":        err.Error(),
+			"torrent_hash": dbTorrent.Hash,
+		})
 		return false
 	}
 
-	err = telegram.SendTorrentAction("updated", globalConfig.TelegramToken, torrentInfo)
-	if err != nil {
-		log.Error("send_telegram_notification", err.Error(), nil)
-		return false
-	}
+	log.Info("old_torrent_deleted", "Old torrent deleted from qBittorrent", map[string]string{
+		"old_hash": dbTorrent.Hash,
+	})
 
+	// Update database record with new torrent info
 	err = database.UpdateRecord(database.DB, torrentInfo)
 	if err != nil {
-		log.Error("update_db_record", err.Error(), nil)
+		log.Error("update_db_record", "Error updating torrent record in database", map[string]string{
+			"error":    err.Error(),
+			"new_hash": torrentInfo.Hash,
+		})
 		return false
 	}
 
-	return addTorrentToQbittorrent(dbTorrent, false)
+	log.Info("database_updated", "Database record updated with new torrent info", map[string]string{
+		"new_hash": torrentInfo.Hash,
+	})
+
+	// Create new torrent struct with updated info for adding to qBittorrent
+	newTorrent := Torrent{
+		Hash:     torrentInfo.Hash,
+		Name:     torrentInfo.Title,
+		Title:    torrentInfo.Title,
+		Url:      torrentInfo.Url,
+		SavePath: savePath,
+	}
+
+	// Add updated torrent to qBittorrent
+	if !addTorrentToQbittorrent(newTorrent, false) {
+		log.Error("add_updated_torrent", "Error adding updated torrent to qBittorrent", map[string]string{
+			"new_hash": torrentInfo.Hash,
+		})
+		return false
+	}
+
+	// Send Telegram notification about the update
+	err = telegram.SendTorrentAction("updated", globalConfig.TelegramToken, torrentInfo)
+	if err != nil {
+		log.Error("send_telegram_notification", "Error sending Telegram notification", map[string]string{
+			"error": err.Error(),
+		})
+		// Don't return false here as the update was successful, just notification failed
+	}
+
+	log.Info("torrent_update_completed", "Torrent update process completed successfully", map[string]string{
+		"torrent_url": torrentInfo.Url,
+		"old_hash":    dbTorrent.Hash,
+		"new_hash":    torrentInfo.Hash,
+		"title":       torrentInfo.Title,
+	})
+
+	return true
 }

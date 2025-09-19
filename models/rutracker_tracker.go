@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/PuerkitoBio/goquery"
 	"golang.org/x/text/encoding/charmap"
 )
 
@@ -198,13 +199,57 @@ func (r *RuTrackerTracker) DownloadTorrentFile(originalUrl string) ([]byte, erro
 
 // GetTitleFromUrl extracts the title from a rutracker.org torrent page
 func (r *RuTrackerTracker) GetTitleFromUrl(url string) (string, error) {
-	// For rutracker, we'll extract title from the torrent hash request
-	// This is a simplified implementation
-	torrent, err := r.GetTorrentHash(url)
+	// Get the HTML of the torrent page
+	resp, err := r.user.Client.Get(url)
 	if err != nil {
+		r.log.Error("get_title_from_url", "Error while getting torrent page", map[string]string{"error": err.Error()})
 		return "", err
 	}
-	return torrent.Name, nil
+	defer resp.Body.Close()
+
+	// Create a goquery document from the decoded response body
+	doc, err := goquery.NewDocumentFromReader(r.rutracker1251decoder(resp.Body))
+	if err != nil {
+		r.log.Error("get_title_from_url", "Error while parsing HTML document", map[string]string{"error": err.Error()})
+		return "", err
+	}
+
+	// Find the title in the h1.maintitle element with topic-title anchor
+	title := ""
+	doc.Find("h1.maintitle a#topic-title").Each(func(i int, s *goquery.Selection) {
+		if title == "" { // Only get the first match
+			title = strings.TrimSpace(s.Text())
+		}
+	})
+
+	if title != "" {
+		r.log.Info("get_title_from_url", "Successfully extracted title using goquery", map[string]string{"title": title})
+		return title, nil
+	}
+
+	// Fallback: try to find any h1.maintitle element
+	doc.Find("h1.maintitle").Each(func(i int, s *goquery.Selection) {
+		if title == "" { // Only get the first match
+			title = strings.TrimSpace(s.Text())
+		}
+	})
+
+	if title != "" {
+		r.log.Info("get_title_from_url", "Successfully extracted title from h1.maintitle fallback", map[string]string{"title": title})
+		return title, nil
+	}
+
+	// If we couldn't find the title, fallback to just getting the topic ID
+	topicIDRegExp := regexp.MustCompile(`/forum/viewtopic\.php\?t=(\d+)`)
+	topicIDMatch := topicIDRegExp.FindSubmatch([]byte(url))
+	if len(topicIDMatch) > 1 {
+		fallbackTitle := fmt.Sprintf("RuTracker Topic #%s", topicIDMatch[1])
+		r.log.Info("get_title_from_url", "Using fallback title with topic ID", map[string]string{"title": fallbackTitle})
+		return fallbackTitle, nil
+	}
+
+	r.log.Error("get_title_from_url", "Could not extract title from HTML", nil)
+	return "Unknown RuTracker Torrent", nil
 }
 
 // GetTorrentHash retrieves torrent information including hash from rutracker.org
