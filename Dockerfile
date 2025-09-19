@@ -1,5 +1,7 @@
 # Set build stage
 FROM golang:1.24-alpine AS build
+# Install build dependencies for CGO
+RUN apk add --no-cache gcc musl-dev
 # Copy go.mod and go.sum first for better caching
 COPY go.mod go.sum ./
 # Download dependencies
