@@ -1,10 +1,15 @@
 # Set build stage
 FROM golang:1.24-alpine AS build
-# Copy and build
-COPY . /app
-WORKDIR /app
-# Download dependencies and build
-RUN go mod tidy && go build -buildvcs=false -o kinozal_monitor cmd/*
+# Copy go.mod and go.sum first for better caching
+COPY go.mod go.sum ./
+# Download dependencies
+RUN go mod download
+# Copy the rest of the source
+COPY . .
+# Enable CGO for sqlite
+ENV CGO_ENABLED=1
+# Build
+RUN go build -buildvcs=false -o kinozal_monitor cmd/*
 
 # Set runtime stage
 FROM alpine:latest

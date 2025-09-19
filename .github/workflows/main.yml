@@ -48,6 +48,7 @@ jobs:
             aladex/kinozal_monitor:${{ steps.get_version.outputs.VERSION }}
             aladex/kinozal_monitor:latest
           platforms: linux/amd64,linux/arm64
+          cgo: true
 
       - name: Set up Go
         uses: actions/setup-go@v4
@@ -58,6 +59,8 @@ jobs:
         run: |
           go mod tidy
           go build -buildvcs=false -o kinozal_monitor
+        env:
+          CGO_ENABLED: 1
 
       # Create a GitHub release and upload the Linux binary
       - name: Create GitHub release and upload binary
