@@ -25,9 +25,17 @@ type TorrentWatcher struct {
 
 // torrentAdder
 func torrentAdder(torrentData common.TorrentData, wsMsg chan string) {
-	torrentInfo, err := kzUser.GetTorrentHash(torrentData.Url)
+	// Get the appropriate tracker based on URL
+	tracker, err := models.GlobalTrackerManager.GetTrackerByURL(torrentData.Url)
 	if err != nil {
-		log.Error("get_torrent_info", err.Error(), nil)
+		log.Error("get_tracker", "Error while getting tracker for URL", map[string]string{"error": err.Error(), "url": torrentData.Url})
+		wsMsg <- "500"
+		return
+	}
+
+	torrentInfo, err := tracker.GetTorrentHash(torrentData.Url)
+	if err != nil {
+		log.Error("get_torrent_info", "Error while getting torrent info", map[string]string{"error": err.Error()})
 		// Return 500 Internal Server Error
 		wsMsg <- "500"
 		return
@@ -41,7 +49,7 @@ func torrentAdder(torrentData common.TorrentData, wsMsg chan string) {
 	}
 
 	// Get title from original url
-	title, err := kzUser.GetTitleFromUrl(torrentData.Url, globalConfig.UserAgent)
+	title, err := tracker.GetTitleFromUrl(torrentData.Url)
 	if err != nil {
 		log.Error("get_title_from_url", err.Error(), nil)
 		wsMsg <- "500"
@@ -152,15 +160,22 @@ func torrentChecker(dbTorrent database.Torrent) (database.Torrent, error) {
 			return dbTorrent, fmt.Errorf("torrent not added to qbittorrent")
 		}
 	} else {
-		// Get torrent info from kinozal.tv
-		log.Info("info", "Get torrent info from kinozal.tv", map[string]string{
+		// Get the appropriate tracker based on URL
+		tracker, err := models.GlobalTrackerManager.GetTrackerByURL(dbTorrent.Url)
+		if err != nil {
+			log.Error("get_tracker", "Error while getting tracker for URL", map[string]string{"error": err.Error(), "url": dbTorrent.Url})
+			return dbTorrent, err
+		}
+
+		// Get torrent info from tracker
+		log.Info("info", "Get torrent info from tracker", map[string]string{
 			"torrent_url":  dbTorrent.Url,
 			"torrent_hash": dbTorrent.Hash,
-			"reason":       "check if torrent exists in kinozal.tv",
+			"reason":       "check if torrent exists in tracker",
 		})
-		torrentInfo, err := kzUser.GetTorrentHash(dbTorrent.Url)
+		torrentInfo, err := tracker.GetTorrentHash(dbTorrent.Url)
 		if err != nil {
-			log.Error("get_torrent_info", err.Error(), nil)
+			log.Error("get_torrent_info", "Error while getting torrent info", map[string]string{"error": err.Error()})
 			return dbTorrent, err
 		}
 
@@ -168,7 +183,7 @@ func torrentChecker(dbTorrent database.Torrent) (database.Torrent, error) {
 		if torrentInfo.Hash != dbTorrent.Hash {
 			// Log that torrent hash is not equal
 			// Update title of torrent
-			torrentInfo.Title, err = kzUser.GetTitleFromUrl(dbTorrent.Url, globalConfig.UserAgent)
+			torrentInfo.Title, err = tracker.GetTitleFromUrl(dbTorrent.Url)
 			if err != nil {
 				log.Error("get_title_from_url", err.Error(), nil)
 				// Set title from database
@@ -317,50 +332,60 @@ func contains(s []Torrent, e string) bool {
 }
 
 func kinozalAction(dbTorrent Torrent) (models.Torrent, error) {
-	torrentFile, err := kzUser.DownloadTorrentFile(dbTorrent.Url, globalConfig.UserAgent)
+	// Get the Kinozal tracker from tracker manager
+	tracker, err := models.GlobalTrackerManager.GetTracker("kinozal")
 	if err != nil {
-		log.Info("download_torrent_file", err.Error(), map[string]string{
+		log.Error("get_tracker", "Error getting Kinozal tracker from manager", map[string]string{"error": err.Error()})
+		return models.Torrent{}, err
+	}
+
+	torrentFile, err := tracker.DownloadTorrentFile(dbTorrent.Url)
+	if err != nil {
+		log.Info("download_torrent_file", "Error downloading torrent file", map[string]string{
 			"torrent_url": dbTorrent.Url,
 			"reason":      "torrent file not found",
 			"result":      "try to add by magnet link",
 		})
 
-		// Add torrent my magnet link
-		err = GlobalQbittorrentUser.AddTorrentByMagnet(dbTorrent.Hash, dbTorrent.SavePath)
-		if err != nil {
-			log.Error("add_torrent_by_magnet", err.Error(), nil)
-			return models.Torrent{}, err
+		// Add torrent by magnet link
+		addErr := GlobalQbittorrentUser.AddTorrentByMagnet(dbTorrent.Hash, dbTorrent.SavePath)
+		if addErr != nil {
+			log.Error("add_torrent_by_magnet", "Error adding torrent by magnet link", map[string]string{"error": addErr.Error()})
+			return models.Torrent{}, addErr
 		}
 	} else {
-		err = GlobalQbittorrentUser.AddTorrent(dbTorrent.Hash, dbTorrent.SavePath, torrentFile)
-		if err != nil {
-			log.Error("add_torrent", err.Error(), nil)
-			return models.Torrent{}, err
+		addErr := GlobalQbittorrentUser.AddTorrent(dbTorrent.Hash, dbTorrent.SavePath, torrentFile)
+		if addErr != nil {
+			log.Error("add_torrent", "Error adding torrent", map[string]string{"error": addErr.Error()})
+			return models.Torrent{}, addErr
 		}
 	}
 
-	torrentInfo, err := kzUser.GetTorrentHash(dbTorrent.Url)
+	torrentInfo, err := tracker.GetTorrentHash(dbTorrent.Url)
 	if err != nil {
-		log.Error("get_torrent_info", err.Error(), nil)
+		log.Error("get_torrent_info", "Error getting torrent info", map[string]string{"error": err.Error()})
 		return models.Torrent{}, err
 	}
 
 	// Get title from kinozal.tv
-	torrentInfo.Title, err = kzUser.GetTitleFromUrl(dbTorrent.Url, globalConfig.UserAgent)
+	title, err := tracker.GetTitleFromUrl(dbTorrent.Url)
 	if err != nil {
-		log.Error("get_title_from_url", err.Error(), nil)
+		log.Error("get_title_from_url", "Error getting title from URL", map[string]string{"error": err.Error()})
 		return models.Torrent{}, err
 	}
+
+	torrentInfo.Title = title
 
 	return torrentInfo, nil
 }
 
 func addTorrentToQbittorrent(dbTorrent Torrent, sendTgMessage bool) bool {
-
-	// Check what of torrent tracker in url
+	// Check what torrent tracker is in the URL
 	trackerDomain := common.GetTrackerDomain(dbTorrent.Url)
 	var torrentInfo models.Torrent
 	var err error
+	var torrentData []byte = nil
+
 	switch trackerDomain {
 	case "kinozal.tv":
 		torrentInfo, err = kinozalAction(dbTorrent)
@@ -369,12 +394,35 @@ func addTorrentToQbittorrent(dbTorrent Torrent, sendTgMessage bool) bool {
 			return false
 		}
 	case "rutracker.org":
-		torrentInfo, err = rtUser.GetRTTorrentHash(dbTorrent.Url)
+		// Get the RuTracker tracker from tracker manager
+		tracker, err := models.GlobalTrackerManager.GetTracker("rutracker")
+		if err != nil {
+			log.Error("get_tracker", "Error getting RuTracker tracker from manager", map[string]string{"error": err.Error()})
+			return false
+		}
+
+		// First, get the hash without downloading the torrent again if possible
+		torrentInfo, err = tracker.GetTorrentHash(dbTorrent.Url)
 		if err != nil {
 			log.Error("get_rt_torrent_hash", err.Error(), nil)
 			return false
 		}
+
+		// Download the torrent file directly
+		torrentData, err = tracker.DownloadTorrentFile(dbTorrent.Url)
+		if err != nil {
+			log.Error("download_torrent", "Error downloading torrent file", map[string]string{"error": err.Error()})
+			return false
+		}
+
+		// Add the torrent to qBittorrent using the downloaded file
+		addErr := GlobalQbittorrentUser.AddTorrent(dbTorrent.Hash, dbTorrent.SavePath, torrentData)
+		if addErr != nil {
+			log.Error("add_torrent", "Error adding torrent", map[string]string{"error": addErr.Error()})
+			return false
+		}
 	}
+
 	if sendTgMessage {
 		err := telegram.SendTorrentAction("added", globalConfig.TelegramToken, torrentInfo)
 		if err != nil {

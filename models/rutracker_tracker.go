@@ -63,7 +63,7 @@ func (r *RuTrackerTracker) Login() error {
 	data := url.Values{
 		"login_username": {r.user.Username},
 		"login_password": {r.user.Password},
-		"login":          {"Вход"},
+		"login":          {"Login"},
 	}
 
 	req, err := http.NewRequest("POST", r.config.LoginURL, strings.NewReader(data.Encode()))
@@ -94,6 +94,8 @@ func (r *RuTrackerTracker) DropLoginSession() {
 
 // DownloadTorrentFile downloads the torrent file from rutracker.org
 func (r *RuTrackerTracker) DownloadTorrentFile(originalUrl string) ([]byte, error) {
+	r.log.Info("rutracker_download", "Using RuTrackerTracker.DownloadTorrentFile method", map[string]string{"url": originalUrl})
+
 	// Get html of the torrent page
 	resp, err := r.user.Client.Get(originalUrl)
 	if err != nil {
@@ -103,17 +105,10 @@ func (r *RuTrackerTracker) DownloadTorrentFile(originalUrl string) ([]byte, erro
 	defer resp.Body.Close()
 
 	// Read response body and decode it from windows-1251 to utf-8
-	body, err := io.ReadAll(r.rutracker1251decoder(resp.Body))
+	_, err = io.ReadAll(r.rutracker1251decoder(resp.Body))
 	if err != nil {
 		r.log.Error("download_torrent", "Error while reading response body", map[string]string{"error": err.Error()})
 		return nil, err
-	}
-
-	// Get token from html
-	token := r.getTokenFromScript(body)
-	if token == nil {
-		r.log.Error("download_torrent", "Error while getting token from html", map[string]string{"error": "token not found"})
-		return nil, fmt.Errorf("token not found")
 	}
 
 	// Get topic id from url
@@ -123,33 +118,82 @@ func (r *RuTrackerTracker) DownloadTorrentFile(originalUrl string) ([]byte, erro
 		return nil, err
 	}
 
-	// if query have no id parameter, then return error
-	if u.Query().Get("id") == "" {
-		r.log.Error("download_torrent", "Error while getting id from url", map[string]string{"error": "id parameter not found"})
-		return nil, fmt.Errorf("id parameter not found in url")
+	// Get topic ID from the URL
+	topicID := ""
+	if u.Query().Get("t") != "" {
+		topicID = u.Query().Get("t")
+	} else {
+		r.log.Error("download_torrent", "Error while getting topic ID from url", map[string]string{"error": "topic ID parameter not found"})
+		return nil, fmt.Errorf("topic ID parameter not found in url")
 	}
 
-	// Get torrent file
-	resp, err = r.user.Client.PostForm(fmt.Sprintf("%s/forum/dl.php?t=%s", r.config.BaseURL, u.Query().Get("id")), url.Values{"form_token": {string(token)}})
+	// Construct the download URL
+	downloadURL := fmt.Sprintf("%s/forum/dl.php?t=%s", r.config.BaseURL, topicID)
+	r.log.Info("download_torrent", "Downloading torrent file", map[string]string{
+		"details_url":  originalUrl,
+		"download_url": downloadURL,
+		"topic_id":     topicID,
+	})
+
+	// Create download request
+	downloadReq, err := http.NewRequest("GET", downloadURL, nil)
 	if err != nil {
-		r.log.Error("download_torrent", "Error while getting torrent file", map[string]string{"error": err.Error()})
+		r.log.Error("download_torrent", "Error creating request for torrent file", map[string]string{"error": err.Error()})
 		return nil, err
 	}
-	defer resp.Body.Close()
 
-	// Read response body
-	body, err = io.ReadAll(resp.Body)
+	downloadReq.Header.Set("User-Agent", r.config.UserAgent)
+	downloadReq.Header.Set("Referer", originalUrl)
+
+	// Log request headers
+	headerLog := make(map[string]string)
+	for headerName, headerValues := range downloadReq.Header {
+		headerLog[headerName] = strings.Join(headerValues, ", ")
+	}
+	r.log.Info("download_torrent", "Request headers", headerLog)
+
+	// Download the torrent file
+	downloadResp, err := r.user.Client.Do(downloadReq)
 	if err != nil {
-		r.log.Error("download_torrent", "Error while reading response body", map[string]string{"error": err.Error()})
+		r.log.Error("download_torrent", "Error downloading torrent file", map[string]string{"error": err.Error()})
+		return nil, err
+	}
+	defer downloadResp.Body.Close()
+
+	// Log response headers
+	respHeaderLog := make(map[string]string)
+	for headerName, headerValues := range downloadResp.Header {
+		respHeaderLog[headerName] = strings.Join(headerValues, ", ")
+	}
+	r.log.Info("download_torrent", "Response headers", respHeaderLog)
+
+	if downloadResp.StatusCode != http.StatusOK {
+		r.log.Error("download_torrent", "Unexpected status code", map[string]string{
+			"status":       downloadResp.Status,
+			"download_url": downloadURL,
+		})
+		return nil, fmt.Errorf("unexpected status code: %s", downloadResp.Status)
+	}
+
+	// Read the torrent file data
+	torrentFile, err := io.ReadAll(downloadResp.Body)
+	if err != nil {
+		r.log.Error("download_torrent", "Error reading torrent file", map[string]string{"error": err.Error()})
 		return nil, err
 	}
 
-	// Check if body is html
-	if !CheckBodyIsTorrentFile(body) {
-		return nil, fmt.Errorf("body is not torrent file")
+	// Check if body is a torrent file
+	if !CheckBodyIsTorrentFile(torrentFile) {
+		r.log.Error("download_torrent", "Response is not a torrent file", nil)
+		return nil, fmt.Errorf("response is not a torrent file")
 	}
 
-	return body, nil
+	r.log.Info("download_torrent", "Successfully downloaded torrent file", map[string]string{
+		"size_bytes": fmt.Sprintf("%d", len(torrentFile)),
+		"topic_id":   topicID,
+	})
+
+	return torrentFile, nil
 }
 
 // GetTitleFromUrl extracts the title from a rutracker.org torrent page
@@ -180,15 +224,32 @@ func (r *RuTrackerTracker) GetTorrentHash(url string) (Torrent, error) {
 		return Torrent{}, err
 	}
 
-	// Get magnet link from html
+	// Try to get magnet link from html first
 	magnetLinkRegExp := regexp.MustCompile(`href="magnet:\?xt=urn:btih:([a-z0-9]+)&`)
 	magnetLink := magnetLinkRegExp.FindSubmatch(body)
-	if len(magnetLink) == 0 {
-		r.log.Error("get_torrent_hash", "Error while getting magnet link from html", map[string]string{"error": "magnet link not found"})
-		return Torrent{}, fmt.Errorf("magnet link not found")
+	if len(magnetLink) > 0 {
+		r.log.Info("get_torrent_hash", "Found hash in magnet link", map[string]string{"hash": string(magnetLink[1])})
+		return Torrent{Hash: string(magnetLink[1]), Url: url}, nil
 	}
 
-	return Torrent{Hash: string(magnetLink[1]), Url: url}, nil
+	r.log.Info("get_torrent_hash", "Magnet link not found, trying to download torrent file", map[string]string{"url": url})
+
+	// If magnet link isn't found, try to download the torrent file
+	torrentData, err := r.DownloadTorrentFile(url)
+	if err != nil {
+		r.log.Error("get_torrent_hash", "Error downloading torrent file", map[string]string{"error": err.Error()})
+		return Torrent{}, err
+	}
+
+	// Extract hash from the downloaded torrent file
+	hash, err := GetInfoHashFromTorrentData(torrentData)
+	if err != nil {
+		r.log.Error("get_torrent_hash", "Error extracting hash from torrent data", map[string]string{"error": err.Error()})
+		return Torrent{}, err
+	}
+
+	r.log.Info("get_torrent_hash", "Successfully extracted hash from torrent file", map[string]string{"hash": hash})
+	return Torrent{Hash: hash, Url: url}, nil
 }
 
 func (r *RuTrackerTracker) getTokenFromScript(htmlData []byte) []byte {
