@@ -1,36 +1,68 @@
-<p style="text-align:center;">
-<img src="logo/logo.png" width="350" alt="Kinozal Monitor Logo">
-</p>
-
 # Kinozal Monitor
 
-Kinozal Monitor is a torrent management tool designed to interact with kinozal.tv and qbittorrent. It provides functionalities to add, remove, and get a list of torrents, as well as real-time updates via WebSocket.
+<p align="center">
+    <img src="logo/logo.png" width="350" alt="Kinozal Monitor Logo">
+</p>
+
+[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/aladex/kinozal_monitor/main.yml?style=for-the-badge&logo=github&label=Build%20%26%20Test)](https://github.com/aladex/kinozal_monitor/actions)
+[![Go Version](https://img.shields.io/badge/Go-1.24-00ADD8?style=for-the-badge&logo=go)](https://golang.org/dl/)
+[![Docker Pulls](https://img.shields.io/docker/pulls/aladex/kinozal_monitor?style=for-the-badge&logo=docker)](https://hub.docker.com/r/aladex/kinozal_monitor)
+[![GitHub Release](https://img.shields.io/github/v/release/aladex/kinozal_monitor?style=for-the-badge)](https://github.com/aladex/kinozal_monitor/releases)
+[![Codecov](https://img.shields.io/codecov/c/github/aladex/kinozal_monitor?style=for-the-badge&logo=codecov)](https://codecov.io/gh/aladex/kinozal_monitor)
+
+## Overview
+
+Kinozal Monitor is an advanced torrent management tool designed to streamline interactions between kinozal.tv and qBittorrent. This robust solution provides comprehensive torrent management capabilities with real-time WebSocket updates, making it easier to track, add, and remove torrents across different platforms.
 
 ## Features
 
-- Add a torrent by URL: Add a new torrent to the system by providing a URL.
-- Remove a torrent by ID: Remove a torrent from the system by providing the ID of the torrent.
-- Get a list of all torrents: Retrieve a list of all torrents currently in the system.
-- Watch torrents: Set a watch flag for torrents to monitor them.
-- Real-time updates: Receive real-time updates about torrent status via WebSocket.
-- Download path selection: Choose from available download paths for your torrents.
+- 🔗 Add torrents by URL
+- 🗑️ Remove torrents by ID
+- 📋 List all current torrents
+- 👀 Torrent watching functionality
+- 🔌 Real-time WebSocket updates
+- 📂 Flexible download path selection
 
-## Usage
+## Prerequisites
 
-The Kinozal Monitor project provides a set of APIs to interact with the system:
+- Go 1.24+
+- Docker (optional)
+- qBittorrent account
+- Kinozal.tv account
 
-- `GET /api/torrents`: Get a list of all torrents.
-- `GET /api/download-paths`: Get a list of available download paths from qBittorrent.
-- `POST /api/add`: Add a torrent by URL. The URL and optional download path are sent in the request body.
-- `POST /api/watch`: Set a watch flag for a torrent. The URL and watch period are sent in the request body.
-- `DELETE /api/remove`: Remove a torrent by ID. The ID is sent in the request body.
-- `GET /ws`: WebSocket endpoint for real-time updates.
+## Installation
+
+### Docker Deployment
+
+```bash
+# Clone the repository
+git clone https://github.com/aladex/kinozal_monitor.git
+cd kinozal_monitor
+
+# Start the service
+docker-compose up -d
+```
+
+### Local Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/aladex/kinozal_monitor.git
+cd kinozal_monitor
+
+# Download dependencies
+go mod download
+
+# Build the application
+go build
+
+# Run the application
+./kinozal_monitor
+```
 
 ## Configuration
 
-You need to configure the system before you can use it. The configuration includes setting up the username and password for kinozal.tv and qbittorrent. The configurations can be added to a config.ini file or set as environment variables.
-
-Here's the structure of the config.ini file:
+Create a `config.ini` file with the following structure:
 
 ```ini
 [qbittorrent]
@@ -43,28 +75,57 @@ username = your_kinozal_username
 password = your_kinozal_password
 ```
 
-If the config.ini file is not found, the system will try to get the configurations from the environment variables:
+Alternatively, use environment variables:
+- `QB_USERNAME`
+- `QB_PASSWORD`
+- `QB_URL`
+- `KZ_USERNAME`
+- `KZ_PASSWORD`
 
-- `QB_USERNAME`: Your qbittorrent username.
-- `QB_PASSWORD`: Your qbittorrent password.
-- `QB_URL`: Your qbittorrent URL.
-- `KZ_USERNAME`: Your kinozal username.
-- `KZ_PASSWORD`: Your kinozal password.
+## API Endpoints
 
-## Initialization
+- `GET /api/torrents`: Retrieve all torrents
+- `GET /api/download-paths`: List available download paths
+- `POST /api/add`: Add a new torrent
+- `POST /api/watch`: Set torrent watch flag
+- `DELETE /api/remove`: Remove a torrent
+- `GET /ws`: WebSocket real-time updates
 
-Upon starting the application, the `TrackerManager` is initialized with configurations for interacting with different torrent trackers. It sets up a `KinozalTracker` instance if valid credentials are provided.
+## Development
 
-## Tracker Configuration
-
-Each tracker, such as `KinozalTracker`, is configured with necessary credentials and URLs to interact with the respective service. Ensure that these configurations are correctly set in the `config.ini` file or through environment variables before running the application.
-
-## Running with Docker
-
-The project includes Docker support. You can use the provided `docker-compose.yml` file to run the application in a containerized environment:
+### Running Tests
 
 ```bash
-docker-compose up -d
+# Run unit tests
+go test ./...
+
+# Run tests with race condition detection
+go test -race ./...
+
+# Generate coverage report
+go test -coverprofile=coverage.out ./...
 ```
 
-This will start the Kinozal Monitor service along with any required dependencies.
+### Code Quality
+
+The project uses:
+- `go vet` for static analysis
+- `staticcheck` for additional linting
+- `gosec` for security scanning
+- `govulncheck` for vulnerability checking
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+## License
+
+Distributed under the MIT License. See `LICENSE` for more information.
+
+## Contact
+
+Project Link: [https://github.com/aladex/kinozal_monitor](https://github.com/aladex/kinozal_monitor)
