@@ -399,15 +399,6 @@ func (r *RuTrackerTracker) attemptGetTorrentHash(url string) (Torrent, error) {
 	return Torrent{Hash: hash, Url: url}, nil
 }
 
-func (r *RuTrackerTracker) getTokenFromScript(htmlData []byte) []byte {
-	fromTokenRegExp := regexp.MustCompile(`form_token: '([a-z0-9]+)',`)
-	formToken := fromTokenRegExp.FindSubmatch(htmlData)
-	if len(formToken) == 0 {
-		return nil
-	}
-	return formToken[1]
-}
-
 func (r *RuTrackerTracker) handleRequestError(err error, url string) {
 	r.log.Error("request_error", err.Error(), map[string]string{"url": url})
 	r.user.Client.Jar = nil

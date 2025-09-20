@@ -57,8 +57,5 @@ type TrackerConfig struct {
 
 // CheckBodyIsTorrentFile checks if body is torrent file but not html
 func CheckBodyIsTorrentFile(body []byte) bool {
-	if bytes.Contains(body, []byte("<!DOCTYPE HTML>")) {
-		return false
-	}
-	return true
+	return !bytes.Contains(body, []byte("<!DOCTYPE HTML>"))
 }

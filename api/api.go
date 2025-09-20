@@ -36,7 +36,6 @@ type ApiHandler struct {
 }
 
 type MsgHandler struct {
-	msg chan string
 }
 
 func NewApiHandler(torrentData chan common.TorrentData) *ApiHandler {
@@ -93,9 +92,7 @@ func (pool *MsgPool) Start() {
 			pool.connMux.Unlock() // Unlock after modifying the connections map
 		case connection := <-pool.unregister:
 			pool.connMux.Lock() // Lock when modifying the connections map
-			if _, ok := pool.connections[connection]; ok {
-				delete(pool.connections, connection)
-			}
+			delete(pool.connections, connection)
 			pool.connMux.Unlock() // Unlock after modifying the connections map
 		case message := <-pool.broadcast:
 			for connection := range pool.connections {

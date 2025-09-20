@@ -14,8 +14,6 @@ import (
 )
 
 var log = logger.New("qbittorrent")
-var kzUser = models.KinozalUser
-var rtUser = models.RTUser
 var globalConfig = config.GlobalConfig
 
 type TorrentWatcher struct {
@@ -337,14 +335,11 @@ func TorrentChecker() {
 // WsMessageHandler for handling websocket messages
 func WsMessageHandler(wsMsg chan string, torrentData chan common.TorrentData) {
 	log.Info("info", "Websocket handler started", nil)
-	for {
-		select {
-		case torrentUrl := <-torrentData:
-			log.Info("info", "URL received", map[string]string{
-				"torrent_url": torrentUrl.Url,
-			})
-			go torrentAdder(torrentUrl, wsMsg)
-		}
+	for torrentUrl := range torrentData {
+		log.Info("info", "URL received", map[string]string{
+			"torrent_url": torrentUrl.Url,
+		})
+		go torrentAdder(torrentUrl, wsMsg)
 	}
 }
 
