@@ -7,6 +7,7 @@ import (
 	"kinozaltv_monitor/api"
 	"kinozaltv_monitor/common"
 	"kinozaltv_monitor/config"
+	customMiddleware "kinozaltv_monitor/middleware"
 	"kinozaltv_monitor/models"
 	"kinozaltv_monitor/qbittorrent"
 	"net/http"
@@ -30,7 +31,7 @@ func main() {
 	}))
 
 	// Middleware
-	e.Use(middleware.Logger())
+	e.Use(customMiddleware.HTTPLogger())
 
 	e.Use(middleware.Recover())
 
