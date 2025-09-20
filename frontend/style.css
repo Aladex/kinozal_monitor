@@ -105,6 +105,7 @@
   --space-0: 0;
   --space-1: 1px;
   --space-2: 2px;
+  --space-3: 3px;
   --space-4: 4px;
   --space-6: 6px;
   --space-8: 8px;
@@ -1219,29 +1220,100 @@ body {
   .container {
     padding: 0 var(--space-16);
   }
-  
+
   .torrent-header {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .torrent-controls {
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
+    flex-direction: column;
+    align-items: stretch;
     margin-top: var(--space-16);
+    gap: var(--space-12);
   }
-  
+
+  .watch-controls {
+    width: 100%;
+    justify-content: center;
+    margin-top: 0;
+  }
+
+  .status-indicator {
+    justify-content: center;
+  }
+
   .modal__content {
     margin: var(--space-20);
   }
-  
+
   .modal__footer {
     flex-direction: column;
   }
-  
+
   .form-actions .btn {
     width: 100%;
+  }
+}
+
+/* Very small screens - handle button wrapping */
+@media (max-width: 383px) {
+  .watch-controls {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-6);
+    padding: var(--space-8) var(--space-12);
+    width: 100%;
+  }
+
+  .watch-controls > * {
+    flex-shrink: 0;
+  }
+
+  /* First row: interval controls */
+  .decrease-btn,
+  .watch-input,
+  .increase-btn {
+    order: 1;
+  }
+
+  .decrease-btn {
+    width: 24px;
+    height: 24px;
+  }
+
+  .watch-input {
+    width: 50px;
+    font-size: var(--font-size-xs);
+  }
+
+  .increase-btn {
+    width: 24px;
+    height: 24px;
+  }
+
+  /* Second row: action buttons - force to new line with width 100% */
+  .update-btn {
+    order: 2;
+    white-space: nowrap;
+    font-size: var(--font-size-xs);
+    width: 100%;
+    margin-top: var(--space-6);
+  }
+
+  .btn--error.btn--sm {
+    order: 3;
+    white-space: nowrap;
+    font-size: var(--font-size-xs);
+    flex: 1 1 calc(50% - var(--space-3));
+    min-width: 55px;
+  }
+
+  .interval-btn {
+    width: 24px;
+    height: 24px;
+    font-size: var(--font-size-sm);
   }
 }
 
