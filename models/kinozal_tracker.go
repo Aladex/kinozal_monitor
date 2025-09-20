@@ -89,7 +89,11 @@ func (k *KinozalTracker) Login() error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			k.log.Error("login", "Error closing login response body", map[string]string{"error": closeErr.Error()})
+		}
+	}()
 
 	body, err := io.ReadAll(k.kinozal1251decoder(resp.Body))
 	if err != nil {
@@ -136,12 +140,61 @@ func (k *KinozalTracker) DropLoginSession() {
 func (kz *KinozalTracker) DownloadTorrentFile(url string) ([]byte, error) {
 	kz.log.Info("kinozal_download", "Using KinozalTracker.DownloadTorrentFile method", map[string]string{"url": url})
 
-	// Call the TrackerUser's DownloadTorrentFile method which has the actual implementation
-	return kz.user.DownloadTorrentFile(url, kz.config.UserAgent)
+	var torrentData []byte
+	var err error
+
+	for i := 0; i < 10; i++ {
+		torrentData, err = kz.user.DownloadTorrentFile(url, kz.config.UserAgent)
+		if err != nil {
+			kz.handleRequestError(err, url)
+		} else if len(torrentData) > 0 && CheckBodyIsTorrentFile(torrentData) {
+			break
+		} else {
+			kz.log.Info("kinozal_download", "Invalid torrent data received, retrying with fresh session", map[string]string{"url": url, "attempt": fmt.Sprintf("%d", i+1)})
+			kz.user.Client.Jar = nil
+			err = kz.Login()
+			if err != nil {
+				kz.log.Error("login_err", err.Error(), map[string]string{"url": url})
+			}
+		}
+	}
+
+	if len(torrentData) == 0 || !CheckBodyIsTorrentFile(torrentData) {
+		return nil, fmt.Errorf("failed to download valid torrent file after 10 attempts")
+	}
+
+	return torrentData, nil
 }
 
 // GetTitleFromUrl extracts the title from a kinozal.tv torrent page
 func (k *KinozalTracker) GetTitleFromUrl(originalUrl string) (string, error) {
+	var title string
+	var err error
+
+	for i := 0; i < 10; i++ {
+		title, err = k.attemptGetTitle(originalUrl)
+		if err != nil {
+			k.handleRequestError(err, originalUrl)
+		} else if title != "" {
+			break
+		} else {
+			k.log.Info("get_title_from_url", "Empty title received, retrying with fresh session", map[string]string{"url": originalUrl, "attempt": fmt.Sprintf("%d", i+1)})
+			k.user.Client.Jar = nil
+			err = k.Login()
+			if err != nil {
+				k.log.Error("login_err", err.Error(), map[string]string{"url": originalUrl})
+			}
+		}
+	}
+
+	if title == "" {
+		return "", fmt.Errorf("failed to get title after 10 attempts")
+	}
+
+	return title, nil
+}
+
+func (k *KinozalTracker) attemptGetTitle(originalUrl string) (string, error) {
 	req, err := http.NewRequest("GET", originalUrl, nil)
 	if err != nil {
 		return "", err
@@ -153,7 +206,11 @@ func (k *KinozalTracker) GetTitleFromUrl(originalUrl string) (string, error) {
 		k.log.Error("get_title_from_url", "Error while sending request", map[string]string{"error": err.Error()})
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			k.log.Error("get_title_from_url", "Error closing response body", map[string]string{"error": closeErr.Error()})
+		}
+	}()
 
 	doc, err := html.Parse(resp.Body)
 	if err != nil {
@@ -309,7 +366,11 @@ func (t *TrackerUser) DownloadTorrentFile(url string, userAgent string) ([]byte,
 		log.Error("kinozal_download_torrent", "Error getting details page", map[string]string{"error": err.Error()})
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			log.Error("kinozal_download_torrent", "Error closing details page response body", map[string]string{"error": closeErr.Error()})
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		log.Error("kinozal_download_torrent", "Unexpected status code for details page", map[string]string{"status": resp.Status})
@@ -369,7 +430,11 @@ func (t *TrackerUser) DownloadTorrentFile(url string, userAgent string) ([]byte,
 		log.Error("kinozal_download_torrent", "Error downloading torrent file", map[string]string{"error": err.Error()})
 		return nil, err
 	}
-	defer downloadResp.Body.Close()
+	defer func() {
+		if closeErr := downloadResp.Body.Close(); closeErr != nil {
+			log.Error("kinozal_download_torrent", "Error closing download response body", map[string]string{"error": closeErr.Error()})
+		}
+	}()
 
 	// Log all response headers
 	respHeaderLog := make(map[string]string)
@@ -466,7 +531,11 @@ func (k *KinozalTracker) attemptRequest(url string) (Torrent, error) {
 	if err != nil {
 		return kzTorrent, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			k.log.Error("attempt_request", "Error closing response body", map[string]string{"error": closeErr.Error()})
+		}
+	}()
 
 	doc, err := html.Parse(resp.Body)
 	if err != nil {

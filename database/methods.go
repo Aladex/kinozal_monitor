@@ -16,18 +16,22 @@ type Torrent struct {
 }
 
 // GetAllRecords is a function for getting all torrents records from the database
-func GetAllRecords(db *sql.DB) ([]Torrent, error) {
+func GetAllRecords(db *sql.DB) (records []Torrent, err error) {
 	rows, err := db.Query("SELECT id, title, name, hash, url, watch_every FROM torrents")
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if cerr := rows.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 
-	records := make([]Torrent, 0)
+	records = make([]Torrent, 0)
 	for rows.Next() {
 		var r Torrent
-		if err := rows.Scan(&r.ID, &r.Title, &r.Name, &r.Hash, &r.Url, &r.WatchEvery); err != nil {
-			return nil, err
+		if scanErr := rows.Scan(&r.ID, &r.Title, &r.Name, &r.Hash, &r.Url, &r.WatchEvery); scanErr != nil {
+			return nil, scanErr
 		}
 		records = append(records, r)
 	}
@@ -62,8 +66,6 @@ func CreateOrUpdateRecord(db *sql.DB, torrentInfo models.Torrent) error {
 		}
 		return nil
 	}
-
-	return nil
 }
 
 // AddRecord is a function for adding a torrent record to the database

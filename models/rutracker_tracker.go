@@ -79,7 +79,11 @@ func (r *RuTrackerTracker) Login() error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			r.log.Error("login", "Error closing login response body", map[string]string{"error": closeErr.Error()})
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("bad status: %s", resp.Status)
@@ -97,13 +101,44 @@ func (r *RuTrackerTracker) DropLoginSession() {
 func (r *RuTrackerTracker) DownloadTorrentFile(originalUrl string) ([]byte, error) {
 	r.log.Info("rutracker_download", "Using RuTrackerTracker.DownloadTorrentFile method", map[string]string{"url": originalUrl})
 
+	var torrentData []byte
+	var err error
+
+	for i := 0; i < 10; i++ {
+		torrentData, err = r.attemptDownloadTorrentFile(originalUrl)
+		if err != nil {
+			r.handleRequestError(err, originalUrl)
+		} else if len(torrentData) > 0 && CheckBodyIsTorrentFile(torrentData) {
+			break
+		} else {
+			r.log.Info("rutracker_download", "Invalid torrent data received, retrying with fresh session", map[string]string{"url": originalUrl, "attempt": fmt.Sprintf("%d", i+1)})
+			r.user.Client.Jar = nil
+			err = r.Login()
+			if err != nil {
+				r.log.Error("login_err", err.Error(), map[string]string{"url": originalUrl})
+			}
+		}
+	}
+
+	if len(torrentData) == 0 || !CheckBodyIsTorrentFile(torrentData) {
+		return nil, fmt.Errorf("failed to download valid torrent file after 10 attempts")
+	}
+
+	return torrentData, nil
+}
+
+func (r *RuTrackerTracker) attemptDownloadTorrentFile(originalUrl string) ([]byte, error) {
 	// Get html of the torrent page
 	resp, err := r.user.Client.Get(originalUrl)
 	if err != nil {
 		r.log.Error("download_torrent", "Error while getting torrent page", map[string]string{"error": err.Error()})
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			r.log.Error("download_torrent", "Error closing response body", map[string]string{"error": closeErr.Error()})
+		}
+	}()
 
 	// Read response body and decode it from windows-1251 to utf-8
 	_, err = io.ReadAll(r.rutracker1251decoder(resp.Body))
@@ -159,7 +194,11 @@ func (r *RuTrackerTracker) DownloadTorrentFile(originalUrl string) ([]byte, erro
 		r.log.Error("download_torrent", "Error downloading torrent file", map[string]string{"error": err.Error()})
 		return nil, err
 	}
-	defer downloadResp.Body.Close()
+	defer func() {
+		if closeErr := downloadResp.Body.Close(); closeErr != nil {
+			r.log.Error("download_torrent", "Error closing download response body", map[string]string{"error": closeErr.Error()})
+		}
+	}()
 
 	// Log response headers
 	respHeaderLog := make(map[string]string)
@@ -199,13 +238,44 @@ func (r *RuTrackerTracker) DownloadTorrentFile(originalUrl string) ([]byte, erro
 
 // GetTitleFromUrl extracts the title from a rutracker.org torrent page
 func (r *RuTrackerTracker) GetTitleFromUrl(url string) (string, error) {
+	var title string
+	var err error
+
+	for i := 0; i < 10; i++ {
+		title, err = r.attemptGetTitle(url)
+		if err != nil {
+			r.handleRequestError(err, url)
+		} else if title != "" && title != "Unknown RuTracker Torrent" {
+			break
+		} else {
+			r.log.Info("get_title_from_url", "Empty or fallback title received, retrying with fresh session", map[string]string{"url": url, "attempt": fmt.Sprintf("%d", i+1)})
+			r.user.Client.Jar = nil
+			err = r.Login()
+			if err != nil {
+				r.log.Error("login_err", err.Error(), map[string]string{"url": url})
+			}
+		}
+	}
+
+	if title == "" {
+		return "Unknown RuTracker Torrent", nil
+	}
+
+	return title, nil
+}
+
+func (r *RuTrackerTracker) attemptGetTitle(url string) (string, error) {
 	// Get the HTML of the torrent page
 	resp, err := r.user.Client.Get(url)
 	if err != nil {
 		r.log.Error("get_title_from_url", "Error while getting torrent page", map[string]string{"error": err.Error()})
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			r.log.Error("get_title_from_url", "Error closing response body", map[string]string{"error": closeErr.Error()})
+		}
+	}()
 
 	// Create a goquery document from the decoded response body
 	doc, err := goquery.NewDocumentFromReader(r.rutracker1251decoder(resp.Body))
@@ -254,13 +324,45 @@ func (r *RuTrackerTracker) GetTitleFromUrl(url string) (string, error) {
 
 // GetTorrentHash retrieves torrent information including hash from rutracker.org
 func (r *RuTrackerTracker) GetTorrentHash(url string) (Torrent, error) {
+	var torrent Torrent
+	var err error
+
+	for i := 0; i < 10; i++ {
+		torrent, err = r.attemptGetTorrentHash(url)
+		if err != nil {
+			r.handleRequestError(err, url)
+		} else if torrent.Hash != "" {
+			break
+		} else {
+			r.log.Info("get_torrent_hash", "Empty hash received, retrying with fresh session", map[string]string{"url": url, "attempt": fmt.Sprintf("%d", i+1)})
+			r.user.Client.Jar = nil
+			err = r.Login()
+			if err != nil {
+				r.log.Error("login_err", err.Error(), map[string]string{"url": url})
+			}
+		}
+	}
+
+	if torrent.Hash == "" {
+		return torrent, ErrHashIsEmpty
+	}
+
+	torrent.Url = url
+	return torrent, nil
+}
+
+func (r *RuTrackerTracker) attemptGetTorrentHash(url string) (Torrent, error) {
 	// Get html of the torrent page
 	resp, err := r.user.Client.Get(url)
 	if err != nil {
 		r.log.Error("get_torrent_hash", "Error while getting torrent page", map[string]string{"error": err.Error()})
 		return Torrent{}, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			r.log.Error("get_torrent_hash", "Error closing response body", map[string]string{"error": closeErr.Error()})
+		}
+	}()
 
 	// Read response body and decode it from windows-1251 to utf-8
 	body, err := io.ReadAll(r.rutracker1251decoder(resp.Body))
@@ -280,7 +382,7 @@ func (r *RuTrackerTracker) GetTorrentHash(url string) (Torrent, error) {
 	r.log.Info("get_torrent_hash", "Magnet link not found, trying to download torrent file", map[string]string{"url": url})
 
 	// If magnet link isn't found, try to download the torrent file
-	torrentData, err := r.DownloadTorrentFile(url)
+	torrentData, err := r.attemptDownloadTorrentFile(url)
 	if err != nil {
 		r.log.Error("get_torrent_hash", "Error downloading torrent file", map[string]string{"error": err.Error()})
 		return Torrent{}, err
@@ -304,6 +406,15 @@ func (r *RuTrackerTracker) getTokenFromScript(htmlData []byte) []byte {
 		return nil
 	}
 	return formToken[1]
+}
+
+func (r *RuTrackerTracker) handleRequestError(err error, url string) {
+	r.log.Error("request_error", err.Error(), map[string]string{"url": url})
+	r.user.Client.Jar = nil
+	err = r.Login()
+	if err != nil {
+		r.log.Error("login_err", err.Error(), map[string]string{"url": url})
+	}
 }
 
 func (r *RuTrackerTracker) rutracker1251decoder(reader io.Reader) io.Reader {
