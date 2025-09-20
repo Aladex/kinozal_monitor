@@ -1,7 +1,7 @@
 package models
 
 import (
-	"crypto/sha1"
+	"crypto/sha1" // #nosec G505 - SHA1 is required by BitTorrent protocol specification for info hash calculation
 	"encoding/hex"
 	"errors"
 	"github.com/zeebo/bencode"
@@ -33,6 +33,7 @@ func GetInfoHashFromTorrentData(torrentData []byte) (string, error) {
 	}
 
 	// Calculate SHA1 hash of the encoded info dictionary
+	// #nosec G401 - SHA1 is required by BitTorrent protocol specification for info hash calculation
 	h := sha1.New()
 	if _, err := io.WriteString(h, buffer.String()); err != nil {
 		return "", errors.New("failed to calculate SHA1 hash: " + err.Error())

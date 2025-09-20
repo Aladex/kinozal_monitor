@@ -13,7 +13,7 @@ var DB *sql.DB
 func CreateSQLiteDB() *sql.DB {
 	// Create database folder if not exists
 	folderName := "db"
-	err := os.MkdirAll(folderName, 0755)
+	err := os.MkdirAll(folderName, 0750)
 	if err != nil {
 		log.Fatal(err)
 	}

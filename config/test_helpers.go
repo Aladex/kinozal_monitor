@@ -8,7 +8,9 @@ import (
 // SetupTestConfig configures the application for testing
 func SetupTestConfig(t *testing.T) {
 	// Set test environment variable to force loading test config
-	os.Setenv("APP_ENV", "test")
+	if err := os.Setenv("APP_ENV", "test"); err != nil {
+		t.Fatalf("Failed to set test environment variable: %v", err)
+	}
 
 	// Reinitialize config with test environment
 	GlobalConfig = &AppConfig{}
