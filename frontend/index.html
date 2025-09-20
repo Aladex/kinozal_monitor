@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,66 +7,88 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- Header -->
+    <!-- Header Section -->
     <header class="header">
         <div class="container">
-            <div class="header__content">
-                <h1 class="header__title">Torrent Monitor</h1>
-                <p class="header__subtitle">Monitor and manage your torrents from Kinozal and RuTracker</p>
-            </div>
+            <h1 class="header__title">Torrent Monitor</h1>
+            <p class="header__subtitle">Мониторинг и управление торрентами с Кинозал и RuTracker</p>
         </div>
     </header>
 
     <!-- Main Content -->
     <main class="main">
         <div class="container">
-            <!-- Add New Torrent Section -->
-            <section class="section">
+            <!-- Add New Torrent Form -->
+            <div class="add-torrent-section">
                 <div class="card">
                     <div class="card__header">
-                        <h2 class="card__title">Add New Torrent</h2>
+                        <h2>Добавить новый торрент</h2>
                     </div>
                     <div class="card__body">
-                        <form id="addTorrentForm">
+                        <form id="addTorrentForm" class="add-torrent-form">
                             <div class="form-group">
-                                <label for="torrentUrl" class="form-label">Torrent URL</label>
+                                <label for="torrentUrl" class="form-label">URL торрента</label>
                                 <input
                                     type="url"
                                     id="torrentUrl"
                                     name="url"
                                     class="form-control"
-                                    placeholder="https://kinozal.tv/details.php?id=... or https://rutracker.org/forum/viewtopic.php?t=..."
+                                    placeholder="https://kinozal.tv/details.php?id=..."
                                     required
                                 />
                             </div>
                             <div class="form-group">
-                                <label for="downloadPath" class="form-label">Download Path</label>
+                                <label for="downloadPath" class="form-label">Папка для загрузки</label>
                                 <select id="downloadPath" name="downloadPath" class="form-control" required>
-                                    <option value="">Select download path...</option>
+                                    <option value="">Выберите папку...</option>
+                                    <option value="/Downloads/Movies">/Downloads/Movies</option>
+                                    <option value="/Downloads/TV Shows">/Downloads/TV Shows</option>
+                                    <option value="/Downloads/Documentaries">/Downloads/Documentaries</option>
+                                    <option value="/Media/Torrents">/Media/Torrents</option>
                                 </select>
                             </div>
-                            <button type="submit" class="btn btn--primary btn--full">
-                                Add Torrent
-                            </button>
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn--primary">
+                                    Добавить торрент
+                                </button>
+                            </div>
                         </form>
                     </div>
                 </div>
-            </section>
+            </div>
 
             <!-- Active Torrents Section -->
-            <section class="section">
-                <h2 class="section__title">Active Torrents</h2>
-                <div id="torrentList" class="torrents-container">
-                    <div class="loading">Loading torrents...</div>
+            <div class="torrents-section">
+                <h2 class="section-title">Активные торренты</h2>
+                <div id="torrentsContainer" class="torrents-container">
+                    <!-- Torrents will be dynamically inserted here -->
                 </div>
                 <div id="emptyState" class="empty-state hidden">
                     <div class="empty-state__icon">📁</div>
-                    <h3 class="empty-state__title">No active torrents</h3>
-                    <p class="empty-state__text">Add your first torrent to start monitoring</p>
+                    <h3 class="empty-state__title">Нет активных торрентов</h3>
+                    <p class="empty-state__text">Добавьте свой первый торрент, чтобы начать мониторинг</p>
                 </div>
-            </section>
+            </div>
         </div>
     </main>
+
+    <!-- Confirmation Modal -->
+    <div id="confirmModal" class="modal hidden">
+        <div class="modal__backdrop" id="modalBackdrop"></div>
+        <div class="modal__content">
+            <div class="modal__header">
+                <h3 class="modal__title">Подтверждение удаления</h3>
+            </div>
+            <div class="modal__body">
+                <p>Вы уверены, что хотите удалить этот торрент из мониторинга?</p>
+                <p class="modal__torrent-title" id="modalTorrentTitle"></p>
+            </div>
+            <div class="modal__footer">
+                <button id="cancelDelete" class="btn btn--secondary">Отмена</button>
+                <button id="confirmDelete" class="btn btn--error">Удалить</button>
+            </div>
+        </div>
+    </div>
 
     <script>
         class TorrentMonitor {
@@ -97,7 +119,7 @@
 
             populateDownloadPaths() {
                 const select = document.getElementById('downloadPath');
-                select.innerHTML = '<option value="">Select download path...</option>';
+                select.innerHTML = '<option value="">Выберите папку...</option>';
                 this.downloadPaths.forEach(path => {
                     const option = document.createElement('option');
                     option.value = path;
@@ -118,7 +140,7 @@
             }
 
             renderTorrents() {
-                const container = document.getElementById('torrentList');
+                const container = document.getElementById('torrentsContainer');
                 const emptyState = document.getElementById('emptyState');
 
                 if (!this.torrents || this.torrents.length === 0) {
@@ -136,36 +158,32 @@
                                     ${torrent.title || torrent.name || 'Untitled Torrent'}
                                 </h3>
                                 <a href="${torrent.url}" target="_blank" class="torrent-url">
-                                    ${torrent.url}
+                                    🔗 Go to Torrent
                                 </a>
                                 <div class="torrent-hash">${torrent.hash}</div>
                             </div>
                             <div class="torrent-controls">
                                 <div class="status-indicator ${torrent.watch_every > 0 ? '' : 'status-inactive'}">
-                                    <div class="status-dot"></div>
-                                    <span>${torrent.watch_every > 0 ? `Every ${torrent.watch_every} min` : 'Not watching'}</span>
+                                    <span class="status-dot"></span>
+                                    <span>${torrent.watch_every > 0 ? 'Active' : 'Inactive'}</span>
                                 </div>
-                                <button class="btn-icon btn-icon--danger" onclick="app.removeTorrent('${torrent.hash}', '${torrent.url}')" title="Remove torrent">
-                                    ✕
-                                </button>
+                                <div class="watch-controls">
+                                    <button class="interval-btn decrease-btn" onclick="app.decreaseInterval('watchInterval-${torrent.id || torrent.hash}')">−</button>
+                                    <input type="number"
+                                           id="watchInterval-${torrent.id || torrent.hash}"
+                                           class="watch-input"
+                                           value="${torrent.watch_every || 0}"
+                                           min="0"
+                                           placeholder="0">
+                                    <button class="interval-btn increase-btn" onclick="app.increaseInterval('watchInterval-${torrent.id || torrent.hash}')">+</button>
+                                    <button class="btn btn--secondary btn--sm update-btn" onclick="app.updateWatchInterval('${torrent.url}', 'watchInterval-${torrent.id || torrent.hash}')">
+                                        Update
+                                    </button>
+                                    <button class="btn btn--error btn--sm" onclick="app.confirmRemoveTorrent('${torrent.hash}', '${torrent.url}')">
+                                        Delete
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-
-                        <div class="watch-controls">
-                            <label for="watchInterval-${torrent.id || torrent.hash}">Watch interval (minutes):</label>
-                            <div class="interval-controls">
-                                <button class="interval-btn" onclick="app.decreaseInterval('watchInterval-${torrent.id || torrent.hash}')">−</button>
-                                <input type="number"
-                                       id="watchInterval-${torrent.id || torrent.hash}"
-                                       class="watch-input"
-                                       value="${torrent.watch_every || 0}"
-                                       min="0"
-                                       placeholder="0">
-                                <button class="interval-btn" onclick="app.increaseInterval('watchInterval-${torrent.id || torrent.hash}')">+</button>
-                            </div>
-                            <button class="btn btn--secondary btn--sm" onclick="app.updateWatchInterval('${torrent.url}', 'watchInterval-${torrent.id || torrent.hash}')">
-                                Update
-                            </button>
                         </div>
                     </div>
                 `).join('');
@@ -186,10 +204,10 @@
                     console.log('WebSocket message:', message);
 
                     if (message === 'added') {
-                        this.showNotification('Torrent added successfully', 'success');
+                        this.showNotification('Торрент успешно добавлен', 'success');
                         this.loadTorrents();
                     } else if (message === '500') {
-                        this.showNotification('Error adding torrent', 'error');
+                        this.showNotification('Ошибка при добавлении торрента', 'error');
                     }
                 };
 
@@ -208,6 +226,16 @@
                     e.preventDefault();
                     this.addTorrent();
                 });
+
+                document.getElementById('cancelDelete').addEventListener('click', () => {
+                    this.closeModal();
+                });
+
+                document.getElementById('confirmDelete').addEventListener('click', () => {
+                    const hash = this.currentTorrentHash;
+                    const url = this.currentTorrentUrl;
+                    this.removeTorrent(hash, url);
+                });
             }
 
             async addTorrent() {
@@ -219,7 +247,7 @@
                 };
 
                 if (!data.url || !data.downloadPath) {
-                    this.showNotification('Please fill in all fields', 'error');
+                    this.showNotification('Пожалуйста, заполните все поля', 'error');
                     return;
                 }
 
@@ -234,22 +262,18 @@
 
                     if (response.ok) {
                         form.reset();
-                        this.showNotification('Torrent is being added...', 'success');
+                        this.showNotification('Торрент добавляется...', 'success');
                     } else {
                         const error = await response.json();
-                        this.showNotification(`Error: ${error.error}`, 'error');
+                        this.showNotification(`Ошибка: ${error.error}`, 'error');
                     }
                 } catch (error) {
                     console.error('Error adding torrent:', error);
-                    this.showNotification('Error adding torrent', 'error');
+                    this.showNotification('Ошибка при добавлении торрента', 'error');
                 }
             }
 
             async removeTorrent(hash, url) {
-                if (!confirm('Are you sure you want to remove this torrent from monitoring?')) {
-                    return;
-                }
-
                 try {
                     const response = await fetch('/api/remove', {
                         method: 'DELETE',
@@ -260,16 +284,41 @@
                     });
 
                     if (response.ok) {
-                        this.showNotification('Torrent removed successfully', 'success');
+                        this.showNotification('Torrent successfully deleted', 'success');
                         await this.loadTorrents();
+                        this.closeModal();
                     } else {
                         const error = await response.json();
                         this.showNotification(`Error: ${error.error}`, 'error');
+                        this.closeModal();
                     }
                 } catch (error) {
                     console.error('Error removing torrent:', error);
-                    this.showNotification('Error removing torrent', 'error');
+                    this.showNotification('Error deleting torrent', 'error');
+                    this.closeModal();
                 }
+            }
+
+            confirmRemoveTorrent(hash, url) {
+                this.currentTorrentHash = hash;
+                this.currentTorrentUrl = url;
+
+                const modal = document.getElementById('confirmModal');
+                const backdrop = document.getElementById('modalBackdrop');
+
+                const torrentTitle = this.torrents.find(torrent => torrent.hash === hash)?.title || 'Неизвестный торрент';
+                document.getElementById('modalTorrentTitle').textContent = torrentTitle;
+
+                modal.classList.remove('hidden');
+                backdrop.classList.remove('hidden');
+            }
+
+            closeModal() {
+                const modal = document.getElementById('confirmModal');
+                const backdrop = document.getElementById('modalBackdrop');
+
+                modal.classList.add('hidden');
+                backdrop.classList.add('hidden');
             }
 
             decreaseInterval(inputId) {
@@ -303,15 +352,15 @@
                     });
 
                     if (response.ok) {
-                        this.showNotification('Watch interval updated', 'success');
+                        this.showNotification('Интервал мониторинга обновлён', 'success');
                         await this.loadTorrents();
                     } else {
                         const error = await response.json();
-                        this.showNotification(`Error: ${error.error}`, 'error');
+                        this.showNotification(`Ошибка: ${error.error}`, 'error');
                     }
                 } catch (error) {
                     console.error('Error updating watch interval:', error);
-                    this.showNotification('Error updating watch interval', 'error');
+                    this.showNotification('Ошибка при обновлении интервала мониторинга', 'error');
                 }
             }
 
