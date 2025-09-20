@@ -25,6 +25,15 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
+      - name: Debug environment
+        run: |
+          pwd
+          ls -la
+          cat go.mod
+          go env GOMOD
+          go env GOPATH
+          go env GO111MODULE
+
       - name: Download dependencies
         run: go mod download
 
@@ -32,6 +41,8 @@ jobs:
         run: go mod verify
 
       - name: Run go vet
+        env:
+          GO111MODULE: on
         run: go vet ./...
 
       - name: Install staticcheck
