@@ -1,8 +1,6 @@
 package main
 
 import (
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	assets "kinozaltv_monitor"
 	"kinozaltv_monitor/api"
 	"kinozaltv_monitor/common"
@@ -11,6 +9,9 @@ import (
 	"kinozaltv_monitor/models"
 	"kinozaltv_monitor/qbittorrent"
 	"net/http"
+
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
 var globalConfig = config.GlobalConfig

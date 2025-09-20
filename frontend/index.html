@@ -4,333 +4,69 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Torrent Monitor</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background-color: #f5f5f5;
-            color: #333;
-            line-height: 1.6;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 2rem;
-            border-radius: 10px;
-            margin-bottom: 2rem;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-
-        .header h1 {
-            font-size: 2.5rem;
-            margin-bottom: 0.5rem;
-        }
-
-        .header p {
-            opacity: 0.9;
-            font-size: 1.1rem;
-        }
-
-        .add-torrent-form {
-            background: white;
-            padding: 2rem;
-            border-radius: 10px;
-            margin-bottom: 2rem;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-
-        .form-group {
-            margin-bottom: 1rem;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-weight: 600;
-            color: #555;
-        }
-
-        .form-group input, .form-group select {
-            width: 100%;
-            padding: 0.75rem;
-            border: 2px solid #e1e5e9;
-            border-radius: 5px;
-            font-size: 1rem;
-            transition: border-color 0.3s ease;
-        }
-
-        .form-group input:focus, .form-group select:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-
-        .btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            padding: 0.75rem 1.5rem;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 1rem;
-            font-weight: 600;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-        }
-
-        .btn-danger {
-            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
-        }
-
-        .btn-small {
-            padding: 0.5rem 1rem;
-            font-size: 0.9rem;
-        }
-
-        .torrents-section {
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-        }
-
-        .section-header {
-            background: #f8f9fa;
-            padding: 1.5rem;
-            border-bottom: 1px solid #e1e5e9;
-        }
-
-        .section-header h2 {
-            color: #333;
-            font-size: 1.5rem;
-        }
-
-        .torrent-list {
-            padding: 0;
-        }
-
-        .torrent-item {
-            padding: 1.5rem;
-            border-bottom: 1px solid #e1e5e9;
-            transition: background-color 0.2s ease;
-        }
-
-        .torrent-item:hover {
-            background-color: #f8f9fa;
-        }
-
-        .torrent-item:last-child {
-            border-bottom: none;
-        }
-
-        .torrent-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 1rem;
-        }
-
-        .torrent-title {
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 0.5rem;
-            word-break: break-word;
-        }
-
-        .torrent-url {
-            color: #667eea;
-            text-decoration: none;
-            font-size: 0.9rem;
-            word-break: break-all;
-        }
-
-        .torrent-url:hover {
-            text-decoration: underline;
-        }
-
-        .torrent-actions {
-            display: flex;
-            gap: 0.5rem;
-            flex-shrink: 0;
-        }
-
-        .torrent-details {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1rem;
-            margin-bottom: 1rem;
-        }
-
-        .detail-item {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .detail-label {
-            font-size: 0.8rem;
-            color: #666;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 0.25rem;
-        }
-
-        .detail-value {
-            font-weight: 600;
-            color: #333;
-        }
-
-        .watch-controls {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            margin-top: 1rem;
-            padding-top: 1rem;
-            border-top: 1px solid #e1e5e9;
-        }
-
-        .watch-input {
-            width: 100px;
-            padding: 0.5rem;
-            border: 2px solid #e1e5e9;
-            border-radius: 5px;
-        }
-
-        .status-indicator {
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            margin-right: 0.5rem;
-        }
-
-        .status-active {
-            background-color: #28a745;
-        }
-
-        .status-inactive {
-            background-color: #6c757d;
-        }
-
-        .notification {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 1rem 1.5rem;
-            border-radius: 5px;
-            color: white;
-            font-weight: 600;
-            z-index: 1000;
-            transform: translateX(400px);
-            transition: transform 0.3s ease;
-        }
-
-        .notification.show {
-            transform: translateX(0);
-        }
-
-        .notification.success {
-            background-color: #28a745;
-        }
-
-        .notification.error {
-            background-color: #dc3545;
-        }
-
-        .loading {
-            text-align: center;
-            padding: 2rem;
-            color: #666;
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 3rem;
-            color: #666;
-        }
-
-        .empty-state h3 {
-            margin-bottom: 1rem;
-            color: #333;
-        }
-
-        @media (max-width: 768px) {
-            .container {
-                padding: 10px;
-            }
-
-            .header h1 {
-                font-size: 2rem;
-            }
-
-            .torrent-header {
-                flex-direction: column;
-                gap: 1rem;
-            }
-
-            .torrent-actions {
-                align-self: flex-start;
-            }
-
-            .torrent-details {
-                grid-template-columns: 1fr;
-            }
-
-            .watch-controls {
-                flex-direction: column;
-                align-items: flex-start;
-            }
-        }
-    </style>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>Torrent Monitor</h1>
-            <p>Monitor and manage your torrents from Kinozal and RuTracker</p>
-        </div>
-
-        <div class="add-torrent-form">
-            <h2 style="margin-bottom: 1rem; color: #333;">Add New Torrent</h2>
-            <form id="addTorrentForm">
-                <div class="form-group">
-                    <label for="torrentUrl">Torrent URL</label>
-                    <input type="url" id="torrentUrl" name="url" placeholder="https://kinozal.tv/details.php?id=... or https://rutracker.org/forum/viewtopic.php?t=..." required>
-                </div>
-                <div class="form-group">
-                    <label for="downloadPath">Download Path</label>
-                    <select id="downloadPath" name="downloadPath" required>
-                        <option value="">Select download path...</option>
-                    </select>
-                </div>
-                <button type="submit" class="btn">Add Torrent</button>
-            </form>
-        </div>
-
-        <div class="torrents-section">
-            <div class="section-header">
-                <h2>Active Torrents</h2>
-            </div>
-            <div id="torrentList" class="torrent-list">
-                <div class="loading">Loading torrents...</div>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="header__content">
+                <h1 class="header__title">Torrent Monitor</h1>
+                <p class="header__subtitle">Monitor and manage your torrents from Kinozal and RuTracker</p>
             </div>
         </div>
-    </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+        <div class="container">
+            <!-- Add New Torrent Section -->
+            <section class="section">
+                <div class="card">
+                    <div class="card__header">
+                        <h2 class="card__title">Add New Torrent</h2>
+                    </div>
+                    <div class="card__body">
+                        <form id="addTorrentForm">
+                            <div class="form-group">
+                                <label for="torrentUrl" class="form-label">Torrent URL</label>
+                                <input
+                                    type="url"
+                                    id="torrentUrl"
+                                    name="url"
+                                    class="form-control"
+                                    placeholder="https://kinozal.tv/details.php?id=... or https://rutracker.org/forum/viewtopic.php?t=..."
+                                    required
+                                />
+                            </div>
+                            <div class="form-group">
+                                <label for="downloadPath" class="form-label">Download Path</label>
+                                <select id="downloadPath" name="downloadPath" class="form-control" required>
+                                    <option value="">Select download path...</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn btn--primary btn--full">
+                                Add Torrent
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Active Torrents Section -->
+            <section class="section">
+                <h2 class="section__title">Active Torrents</h2>
+                <div id="torrentList" class="torrents-container">
+                    <div class="loading">Loading torrents...</div>
+                </div>
+                <div id="emptyState" class="empty-state hidden">
+                    <div class="empty-state__icon">📁</div>
+                    <h3 class="empty-state__title">No active torrents</h3>
+                    <p class="empty-state__text">Add your first torrent to start monitoring</p>
+                </div>
+            </section>
+        </div>
+    </main>
 
     <script>
         class TorrentMonitor {
@@ -383,58 +119,51 @@
 
             renderTorrents() {
                 const container = document.getElementById('torrentList');
+                const emptyState = document.getElementById('emptyState');
 
                 if (!this.torrents || this.torrents.length === 0) {
-                    container.innerHTML = `
-                        <div class="empty-state">
-                            <h3>No torrents found</h3>
-                            <p>Add your first torrent using the form above</p>
-                        </div>
-                    `;
+                    container.innerHTML = '';
+                    emptyState.classList.remove('hidden');
                     return;
                 }
 
+                emptyState.classList.add('hidden');
                 container.innerHTML = this.torrents.map(torrent => `
                     <div class="torrent-item" data-hash="${torrent.hash}">
                         <div class="torrent-header">
-                            <div>
-                                <div class="torrent-title">
+                            <div class="torrent-info">
+                                <h3 class="torrent-title">
                                     ${torrent.title || torrent.name || 'Untitled Torrent'}
-                                </div>
+                                </h3>
                                 <a href="${torrent.url}" target="_blank" class="torrent-url">
                                     ${torrent.url}
                                 </a>
+                                <div class="torrent-hash">${torrent.hash}</div>
                             </div>
-                            <div class="torrent-actions">
-                                <button class="btn btn-danger btn-small" onclick="app.removeTorrent('${torrent.hash}', '${torrent.url}')">
-                                    Remove
+                            <div class="torrent-controls">
+                                <div class="status-indicator ${torrent.watch_every > 0 ? '' : 'status-inactive'}">
+                                    <div class="status-dot"></div>
+                                    <span>${torrent.watch_every > 0 ? `Every ${torrent.watch_every} min` : 'Not watching'}</span>
+                                </div>
+                                <button class="btn-icon btn-icon--danger" onclick="app.removeTorrent('${torrent.hash}', '${torrent.url}')" title="Remove torrent">
+                                    ✕
                                 </button>
                             </div>
                         </div>
 
-                        <div class="torrent-details">
-                            <div class="detail-item">
-                                <span class="detail-label">Hash</span>
-                                <span class="detail-value">${torrent.hash}</span>
-                            </div>
-                            <div class="detail-item">
-                                <span class="detail-label">Watch Status</span>
-                                <span class="detail-value">
-                                    <span class="status-indicator ${torrent.watch_every > 0 ? 'status-active' : 'status-inactive'}"></span>
-                                    ${torrent.watch_every > 0 ? `Every ${torrent.watch_every} minutes` : 'Not watching'}
-                                </span>
-                            </div>
-                        </div>
-
                         <div class="watch-controls">
-                            <label for="watchInterval-${torrent.id}">Watch interval (minutes):</label>
-                            <input type="number"
-                                   id="watchInterval-${torrent.id}"
-                                   class="watch-input"
-                                   value="${torrent.watch_every || 0}"
-                                   min="0"
-                                   placeholder="0">
-                            <button class="btn btn-small" onclick="app.updateWatchInterval('${torrent.url}', 'watchInterval-${torrent.id}')">
+                            <label for="watchInterval-${torrent.id || torrent.hash}">Watch interval (minutes):</label>
+                            <div class="interval-controls">
+                                <button class="interval-btn" onclick="app.decreaseInterval('watchInterval-${torrent.id || torrent.hash}')">−</button>
+                                <input type="number"
+                                       id="watchInterval-${torrent.id || torrent.hash}"
+                                       class="watch-input"
+                                       value="${torrent.watch_every || 0}"
+                                       min="0"
+                                       placeholder="0">
+                                <button class="interval-btn" onclick="app.increaseInterval('watchInterval-${torrent.id || torrent.hash}')">+</button>
+                            </div>
+                            <button class="btn btn--secondary btn--sm" onclick="app.updateWatchInterval('${torrent.url}', 'watchInterval-${torrent.id || torrent.hash}')">
                                 Update
                             </button>
                         </div>
@@ -466,7 +195,6 @@
 
                 this.ws.onclose = () => {
                     console.log('WebSocket disconnected');
-                    // Attempt to reconnect after 3 seconds
                     setTimeout(() => this.setupWebSocket(), 3000);
                 };
 
@@ -518,7 +246,7 @@
             }
 
             async removeTorrent(hash, url) {
-                if (!confirm('Are you sure you want to remove this torrent?')) {
+                if (!confirm('Are you sure you want to remove this torrent from monitoring?')) {
                     return;
                 }
 
@@ -533,7 +261,7 @@
 
                     if (response.ok) {
                         this.showNotification('Torrent removed successfully', 'success');
-                        this.loadTorrents();
+                        await this.loadTorrents();
                     } else {
                         const error = await response.json();
                         this.showNotification(`Error: ${error.error}`, 'error');
@@ -542,6 +270,20 @@
                     console.error('Error removing torrent:', error);
                     this.showNotification('Error removing torrent', 'error');
                 }
+            }
+
+            decreaseInterval(inputId) {
+                const input = document.getElementById(inputId);
+                const currentValue = parseInt(input.value) || 0;
+                if (currentValue > 0) {
+                    input.value = currentValue - 1;
+                }
+            }
+
+            increaseInterval(inputId) {
+                const input = document.getElementById(inputId);
+                const currentValue = parseInt(input.value) || 0;
+                input.value = currentValue + 1;
             }
 
             async updateWatchInterval(url, inputId) {
@@ -562,7 +304,7 @@
 
                     if (response.ok) {
                         this.showNotification('Watch interval updated', 'success');
-                        this.loadTorrents();
+                        await this.loadTorrents();
                     } else {
                         const error = await response.json();
                         this.showNotification(`Error: ${error.error}`, 'error');
@@ -574,21 +316,23 @@
             }
 
             showNotification(message, type = 'success') {
-                // Remove existing notifications
                 const existing = document.querySelector('.notification');
                 if (existing) {
                     existing.remove();
                 }
 
                 const notification = document.createElement('div');
-                notification.className = `notification ${type}`;
-                notification.textContent = message;
+                notification.className = `notification notification--${type}`;
+
+                const content = document.createElement('div');
+                content.className = 'notification__content';
+                content.textContent = message;
+
+                notification.appendChild(content);
                 document.body.appendChild(notification);
 
-                // Show notification
                 setTimeout(() => notification.classList.add('show'), 100);
 
-                // Hide notification after 3 seconds
                 setTimeout(() => {
                     notification.classList.remove('show');
                     setTimeout(() => notification.remove(), 300);
