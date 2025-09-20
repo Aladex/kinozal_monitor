@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,7 +11,7 @@
     <header class="header">
         <div class="container">
             <h1 class="header__title">Torrent Monitor</h1>
-            <p class="header__subtitle">Мониторинг и управление торрентами с Кинозал и RuTracker</p>
+            <p class="header__subtitle">Monitoring and managing torrents from Kinozal and RuTracker</p>
         </div>
     </header>
 
@@ -22,12 +22,12 @@
             <div class="add-torrent-section">
                 <div class="card">
                     <div class="card__header">
-                        <h2>Добавить новый торрент</h2>
+                        <h2>Add New Torrent</h2>
                     </div>
                     <div class="card__body">
                         <form id="addTorrentForm" class="add-torrent-form">
                             <div class="form-group">
-                                <label for="torrentUrl" class="form-label">URL торрента</label>
+                                <label for="torrentUrl" class="form-label">Torrent URL</label>
                                 <input
                                     type="url"
                                     id="torrentUrl"
@@ -38,9 +38,9 @@
                                 />
                             </div>
                             <div class="form-group">
-                                <label for="downloadPath" class="form-label">Папка для загрузки</label>
+                                <label for="downloadPath" class="form-label">Download Folder</label>
                                 <select id="downloadPath" name="downloadPath" class="form-control" required>
-                                    <option value="">Выберите папку...</option>
+                                    <option value="">Select folder...</option>
                                     <option value="/Downloads/Movies">/Downloads/Movies</option>
                                     <option value="/Downloads/TV Shows">/Downloads/TV Shows</option>
                                     <option value="/Downloads/Documentaries">/Downloads/Documentaries</option>
@@ -49,7 +49,7 @@
                             </div>
                             <div class="form-actions">
                                 <button type="submit" class="btn btn--primary">
-                                    Добавить торрент
+                                    Add Torrent
                                 </button>
                             </div>
                         </form>
@@ -59,14 +59,14 @@
 
             <!-- Active Torrents Section -->
             <div class="torrents-section">
-                <h2 class="section-title">Активные торренты</h2>
+                <h2 class="section-title">Active Torrents</h2>
                 <div id="torrentsContainer" class="torrents-container">
                     <!-- Torrents will be dynamically inserted here -->
                 </div>
                 <div id="emptyState" class="empty-state hidden">
                     <div class="empty-state__icon">📁</div>
-                    <h3 class="empty-state__title">Нет активных торрентов</h3>
-                    <p class="empty-state__text">Добавьте свой первый торрент, чтобы начать мониторинг</p>
+                    <h3 class="empty-state__title">No Active Torrents</h3>
+                    <p class="empty-state__text">Add your first torrent to start monitoring</p>
                 </div>
             </div>
         </div>
@@ -77,15 +77,15 @@
         <div class="modal__backdrop" id="modalBackdrop"></div>
         <div class="modal__content">
             <div class="modal__header">
-                <h3 class="modal__title">Подтверждение удаления</h3>
+                <h3 class="modal__title">Deletion Confirmation</h3>
             </div>
             <div class="modal__body">
-                <p>Вы уверены, что хотите удалить этот торрент из мониторинга?</p>
+                <p>Are you sure you want to remove this torrent from monitoring?</p>
                 <p class="modal__torrent-title" id="modalTorrentTitle"></p>
             </div>
             <div class="modal__footer">
-                <button id="cancelDelete" class="btn btn--secondary">Отмена</button>
-                <button id="confirmDelete" class="btn btn--error">Удалить</button>
+                <button id="cancelDelete" class="btn btn--secondary">Cancel</button>
+                <button id="confirmDelete" class="btn btn--error">Delete</button>
             </div>
         </div>
     </div>
@@ -119,7 +119,7 @@
 
             populateDownloadPaths() {
                 const select = document.getElementById('downloadPath');
-                select.innerHTML = '<option value="">Выберите папку...</option>';
+                select.innerHTML = '<option value="">Select folder...</option>';
                 this.downloadPaths.forEach(path => {
                     const option = document.createElement('option');
                     option.value = path;
@@ -204,10 +204,10 @@
                     console.log('WebSocket message:', message);
 
                     if (message === 'added') {
-                        this.showNotification('Торрент успешно добавлен', 'success');
+                        this.showNotification('Torrent successfully added', 'success');
                         this.loadTorrents();
                     } else if (message === '500') {
-                        this.showNotification('Ошибка при добавлении торрента', 'error');
+                        this.showNotification('Error adding torrent', 'error');
                     }
                 };
 
@@ -247,7 +247,7 @@
                 };
 
                 if (!data.url || !data.downloadPath) {
-                    this.showNotification('Пожалуйста, заполните все поля', 'error');
+                    this.showNotification('Please fill in all fields', 'error');
                     return;
                 }
 
@@ -262,14 +262,14 @@
 
                     if (response.ok) {
                         form.reset();
-                        this.showNotification('Торрент добавляется...', 'success');
+                        this.showNotification('Torrent is being added...', 'success');
                     } else {
                         const error = await response.json();
-                        this.showNotification(`Ошибка: ${error.error}`, 'error');
+                        this.showNotification(`Error: ${error.error}`, 'error');
                     }
                 } catch (error) {
                     console.error('Error adding torrent:', error);
-                    this.showNotification('Ошибка при добавлении торрента', 'error');
+                    this.showNotification('Error adding torrent', 'error');
                 }
             }
 
@@ -306,7 +306,7 @@
                 const modal = document.getElementById('confirmModal');
                 const backdrop = document.getElementById('modalBackdrop');
 
-                const torrentTitle = this.torrents.find(torrent => torrent.hash === hash)?.title || 'Неизвестный торрент';
+                const torrentTitle = this.torrents.find(torrent => torrent.hash === hash)?.title || 'Unknown torrent';
                 document.getElementById('modalTorrentTitle').textContent = torrentTitle;
 
                 modal.classList.remove('hidden');
@@ -352,15 +352,15 @@
                     });
 
                     if (response.ok) {
-                        this.showNotification('Интервал мониторинга обновлён', 'success');
+                        this.showNotification('Monitoring interval updated', 'success');
                         await this.loadTorrents();
                     } else {
                         const error = await response.json();
-                        this.showNotification(`Ошибка: ${error.error}`, 'error');
+                        this.showNotification(`Error: ${error.error}`, 'error');
                     }
                 } catch (error) {
                     console.error('Error updating watch interval:', error);
-                    this.showNotification('Ошибка при обновлении интервала мониторинга', 'error');
+                    this.showNotification('Error updating monitoring interval', 'error');
                 }
             }
 
