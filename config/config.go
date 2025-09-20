@@ -3,7 +3,7 @@ package config
 import (
 	"github.com/joho/godotenv"
 	"gopkg.in/ini.v1"
-	"log"
+	logger "kinozaltv_monitor/logging"
 	"os"
 	"strings"
 )
@@ -25,6 +25,8 @@ type AppConfig struct {
 // GlobalConfig is a global variable for storing user data
 var GlobalConfig *AppConfig
 
+var log = logger.New("config")
+
 func loadEnvFiles() {
 	// Try to load .env files in order of priority
 	envFiles := []string{
@@ -37,9 +39,9 @@ func loadEnvFiles() {
 		if _, err := os.Stat(envFile); err == nil {
 			err := godotenv.Load(envFile)
 			if err != nil {
-				log.Printf("Warning: Could not load %s: %v", envFile, err)
+				log.Error("env_load_warning", "Could not load "+envFile, map[string]string{"error": err.Error()})
 			} else {
-				log.Printf("Loaded environment from %s", envFile)
+				log.Info("env_loaded", "Loaded environment from "+envFile, nil)
 				break // Load only the first available file
 			}
 		}
@@ -52,9 +54,9 @@ func loadConfig() error {
 
 	cfg, err := ini.Load("config.ini")
 	if err != nil {
-		log.Printf("Warning: Could not read config.ini: %v (using environment variables)", err)
+		log.Error("config_ini_warning", "Could not read config.ini (using environment variables)", map[string]string{"error": err.Error()})
 	} else {
-		log.Println("Config.ini loaded successfully")
+		log.Info("config_ini_loaded", "Config.ini loaded successfully", nil)
 	}
 
 	configFieldMap := map[string]map[string]*string{

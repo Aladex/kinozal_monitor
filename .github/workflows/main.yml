@@ -1,70 +1,148 @@
-# Name of the job
-name: Build and push Docker image
+name: Build and Release
 
-# Trigger the job on push events to tags matching 'v*' (e.g. v1.0, v20.15.10)
 on:
   push:
     tags:
       - 'v*'
+  pull_request:
+    branches: [ master ]
+
+env:
+  GO_VERSION: '1.24'
+  REGISTRY: docker.io
+  IMAGE_NAME: aladex/kinozal_monitor
 
 jobs:
-  docker:
-    # Run the job on the latest version of Ubuntu
+  test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Extract the version from the Git tag
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Install staticcheck
+        run: go install honnef.co/go/tools/cmd/staticcheck@latest
+
+      - name: Run staticcheck
+        run: staticcheck ./...
+
+      - name: Run tests
+        run: go test -race -coverprofile=coverage.out ./...
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.out
+        continue-on-error: true
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run Gosec Security Scanner
+        uses: securecodewarrior/github-action-gosec@master
+        with:
+          args: './...'
+
+      - name: Run govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+  build:
+    needs: [test, security]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Extract version from Git tag
         id: get_version
-        run: echo "VERSION=$(echo $GITHUB_REF | cut -d / -f 3)" >> $GITHUB_OUTPUT
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
-      # Set up QEMU, which allows the Docker daemon to build and run multi-architecture images
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      # Set up Docker Buildx, which enables building and pushing of multi-architecture images
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Log in to DockerHub
       - name: Login to DockerHub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Build and push the Docker image
       - name: Build and push Docker image
-        id: docker_build
         uses: docker/build-push-action@v6
         with:
           context: .
-          # Push the built image to DockerHub
           push: true
-          # Set the tags for the built image
           tags: |
-            aladex/kinozal_monitor:${{ steps.get_version.outputs.VERSION }}
-            aladex/kinozal_monitor:latest
-          platforms: linux/amd64
+            ${{ env.IMAGE_NAME }}:${{ steps.get_version.outputs.VERSION }}
+            ${{ env.IMAGE_NAME }}:latest
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.24'
-
-      - name: Build Linux binary
+      - name: Build binaries for multiple platforms
         run: |
-          go mod tidy
-          go build -buildvcs=false -o kinozal_monitor
-        env:
-          CGO_ENABLED: 1
+          mkdir -p dist
 
-      # Create a GitHub release and upload the Linux binary
-      - name: Create GitHub release and upload binary
-        uses: softprops/action-gh-release@v1
+          # Linux AMD64
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build -buildvcs=false -ldflags="-w -s" -o dist/kinozal_monitor-linux-amd64 .
+
+          # Linux ARM64
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=1 go build -buildvcs=false -ldflags="-w -s" -o dist/kinozal_monitor-linux-arm64 .
+
+          # Windows AMD64
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=1 go build -buildvcs=false -ldflags="-w -s" -o dist/kinozal_monitor-windows-amd64.exe .
+
+          # macOS AMD64
+          GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build -buildvcs=false -ldflags="-w -s" -o dist/kinozal_monitor-darwin-amd64 .
+
+          # macOS ARM64
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build -buildvcs=false -ldflags="-w -s" -o dist/kinozal_monitor-darwin-arm64 .
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
         with:
-          files: ./kinozal_monitor
+          files: |
+            dist/kinozal_monitor-linux-amd64
+            dist/kinozal_monitor-linux-arm64
+            dist/kinozal_monitor-windows-amd64.exe
+            dist/kinozal_monitor-darwin-amd64
+            dist/kinozal_monitor-darwin-arm64
+          generate_release_notes: true
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

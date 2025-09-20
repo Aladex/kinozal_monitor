@@ -12,6 +12,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 
 	"kinozaltv_monitor/config"
 )
@@ -21,6 +22,7 @@ type QbittorrentUser struct {
 	Username string
 	Password string
 	Client   *http.Client
+	mutex    sync.Mutex // Add mutex for thread-safe operations
 }
 
 var GlobalQbittorrentUser *QbittorrentUser
@@ -34,8 +36,38 @@ type Torrent struct {
 	SavePath string `json:"save_path"`
 }
 
-// Login is a method for logging in to the tracker
-func (qb *QbittorrentUser) Login() error {
+// isSessionValid checks if the current session is still valid
+func (qb *QbittorrentUser) isSessionValid() bool {
+	if qb.Client == nil || qb.Client.Jar == nil {
+		return false
+	}
+
+	// Try to make a simple API call to check session validity
+	resp, err := qb.Client.Get(config.GlobalConfig.QBUrl + "/api/v2/app/version")
+	if err != nil {
+		return false
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// If we get a 403 Forbidden or any non-200 status, session is invalid
+	return resp.StatusCode == 200
+}
+
+// ensureValidSession ensures we have a valid session, re-authenticating if necessary
+func (qb *QbittorrentUser) ensureValidSession() error {
+	qb.mutex.Lock()
+	defer qb.mutex.Unlock()
+
+	if qb.isSessionValid() {
+		return nil
+	}
+
+	log.Info("qbittorrent", "Session expired or invalid, re-authenticating", nil)
+	return qb.login()
+}
+
+// login is the internal login method (without mutex, called from ensureValidSession)
+func (qb *QbittorrentUser) login() error {
 	jar, _ := cookiejar.New(nil)
 	qb.Client = &http.Client{
 		Jar: jar,
@@ -49,7 +81,7 @@ func (qb *QbittorrentUser) Login() error {
 		log.Error("qbittorrent", "Error during login request", map[string]string{"error": err.Error()})
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	log.Info("qbittorrent", "Login response received", map[string]string{"status_code": fmt.Sprintf("%d", resp.StatusCode)})
 
@@ -70,6 +102,13 @@ func (qb *QbittorrentUser) Login() error {
 	return nil
 }
 
+// Login is a method for logging in to the tracker (public method with mutex)
+func (qb *QbittorrentUser) Login() error {
+	qb.mutex.Lock()
+	defer qb.mutex.Unlock()
+	return qb.login()
+}
+
 // DropLoginSession is a method for dropping the login session by deleting the cookie
 func (qb *QbittorrentUser) DropLoginSession() error {
 	// Drop login session
@@ -80,16 +119,47 @@ func (qb *QbittorrentUser) DropLoginSession() error {
 
 // GetTorrentHashList is a method for getting a list of torrent hashes
 func (qb *QbittorrentUser) GetTorrentHashList() ([]Torrent, error) {
+	// Ensure we have a valid session before making the request
+	if err := qb.ensureValidSession(); err != nil {
+		log.Error("qbittorrent", "Failed to ensure valid session", map[string]string{"error": err.Error()})
+		return nil, err
+	}
+
 	// Get torrent list
 	resp, err := qb.Client.Get(config.GlobalConfig.QBUrl + "/api/v2/torrents/info?filter=all")
 	if err != nil {
+		log.Error("qbittorrent", "Failed to get torrent list", map[string]string{"error": err.Error()})
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
+
+	// Check if we got a forbidden response (session expired during request)
+	if resp.StatusCode == 403 {
+		log.Info("qbittorrent", "Received 403 Forbidden, attempting to re-authenticate", nil)
+		// Try to re-authenticate and retry the request
+		if err := qb.ensureValidSession(); err != nil {
+			log.Error("qbittorrent", "Failed to re-authenticate after 403", map[string]string{"error": err.Error()})
+			return nil, err
+		}
+
+		// Retry the request
+		resp, err = qb.Client.Get(config.GlobalConfig.QBUrl + "/api/v2/torrents/info?filter=all")
+		if err != nil {
+			log.Error("qbittorrent", "Failed to get torrent list after re-authentication", map[string]string{"error": err.Error()})
+			return nil, err
+		}
+		defer func() { _ = resp.Body.Close() }()
+	}
+
+	if resp.StatusCode != 200 {
+		log.Error("qbittorrent", "Failed to get torrent list, non-200 response", map[string]string{"status_code": fmt.Sprintf("%d", resp.StatusCode)})
+		return nil, fmt.Errorf("failed to get torrent list, status: %d", resp.StatusCode)
+	}
 
 	var torrents []Torrent
 	err = json.NewDecoder(resp.Body).Decode(&torrents)
 	if err != nil {
+		log.Error("qbittorrent", "Failed to decode torrent list JSON", map[string]string{"error": err.Error()})
 		return nil, err
 	}
 
@@ -98,6 +168,12 @@ func (qb *QbittorrentUser) GetTorrentHashList() ([]Torrent, error) {
 
 // AddTorrent is a method for adding a torrent to the client
 func (qb *QbittorrentUser) AddTorrent(hash, savePath string, torrent []byte) error {
+	// Ensure we have a valid session before making the request
+	if err := qb.ensureValidSession(); err != nil {
+		log.Error("qbittorrent", "Failed to ensure valid session for adding torrent", map[string]string{"error": err.Error(), "hash": hash})
+		return err
+	}
+
 	log.Info("qbittorrent", "Adding torrent to qBittorrent", map[string]string{
 		"hash":      hash,
 		"save_path": savePath,
@@ -183,7 +259,28 @@ func (qb *QbittorrentUser) AddTorrent(hash, savePath string, torrent []byte) err
 		})
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
+
+	// Check if we got a forbidden response (session expired during request)
+	if resp.StatusCode == 403 {
+		log.Info("qbittorrent", "Received 403 Forbidden while adding torrent, attempting to re-authenticate", map[string]string{"hash": hash})
+		// Try to re-authenticate and retry the request
+		if err := qb.ensureValidSession(); err != nil {
+			log.Error("qbittorrent", "Failed to re-authenticate after 403 while adding torrent", map[string]string{"error": err.Error(), "hash": hash})
+			return err
+		}
+
+		// Retry the request
+		resp, err = qb.Client.Do(req)
+		if err != nil {
+			log.Error("qbittorrent", "Failed to send add torrent request after re-authentication", map[string]string{
+				"hash":  hash,
+				"error": err.Error(),
+			})
+			return err
+		}
+		defer func() { _ = resp.Body.Close() }()
+	}
 
 	// Read response body for better error reporting
 	responseBody, err := io.ReadAll(resp.Body)
@@ -214,6 +311,12 @@ func (qb *QbittorrentUser) AddTorrent(hash, savePath string, torrent []byte) err
 
 // AddTorrentByMagnet is a method for adding a torrent by magnet link
 func (qb *QbittorrentUser) AddTorrentByMagnet(hash, downloadPath string) error {
+	// Ensure we have a valid session before making the request
+	if err := qb.ensureValidSession(); err != nil {
+		log.Error("qbittorrent", "Failed to ensure valid session for adding torrent by magnet", map[string]string{"error": err.Error(), "hash": hash})
+		return err
+	}
+
 	log.Info("qbittorrent", "Adding torrent by magnet link", map[string]string{
 		"hash":          hash,
 		"download_path": downloadPath,
@@ -232,7 +335,29 @@ func (qb *QbittorrentUser) AddTorrentByMagnet(hash, downloadPath string) error {
 		})
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
+
+	// Check if we got a forbidden response (session expired during request)
+	if resp.StatusCode == 403 {
+		log.Info("qbittorrent", "Received 403 Forbidden while adding torrent by magnet, attempting to re-authenticate", map[string]string{"hash": hash})
+		// Try to re-authenticate and retry the request
+		if err := qb.ensureValidSession(); err != nil {
+			log.Error("qbittorrent", "Failed to re-authenticate after 403 while adding torrent by magnet", map[string]string{"error": err.Error(), "hash": hash})
+			return err
+		}
+
+		// Retry the request
+		resp, err = qb.Client.PostForm(config.GlobalConfig.QBUrl+"/api/v2/torrents/add",
+			url.Values{"urls": {magnet}, "save_path": {downloadPath}})
+		if err != nil {
+			log.Error("qbittorrent", "Failed to add torrent by magnet link after re-authentication", map[string]string{
+				"hash":  hash,
+				"error": err.Error(),
+			})
+			return err
+		}
+		defer func() { _ = resp.Body.Close() }()
+	}
 
 	if resp.StatusCode != 200 {
 		log.Error("qbittorrent", "Failed to add torrent by magnet, non-200 response", map[string]string{
@@ -252,6 +377,12 @@ func (qb *QbittorrentUser) AddTorrentByMagnet(hash, downloadPath string) error {
 
 // DeleteTorrent is a method for deleting a torrent by hash
 func (qb *QbittorrentUser) DeleteTorrent(hash string, dropFiles bool) error {
+	// Ensure we have a valid session before making the request
+	if err := qb.ensureValidSession(); err != nil {
+		log.Error("qbittorrent", "Failed to ensure valid session for deleting torrent", map[string]string{"error": err.Error(), "hash": hash})
+		return err
+	}
+
 	log.Info("qbittorrent", "Deleting torrent by hash", map[string]string{
 		"hash":       hash,
 		"drop_files": fmt.Sprintf("%t", dropFiles),
@@ -275,7 +406,29 @@ func (qb *QbittorrentUser) DeleteTorrent(hash string, dropFiles bool) error {
 		})
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
+
+	// Check if we got a forbidden response (session expired during request)
+	if resp.StatusCode == 403 {
+		log.Info("qbittorrent", "Received 403 Forbidden while deleting torrent, attempting to re-authenticate", map[string]string{"hash": hash})
+		// Try to re-authenticate and retry the request
+		if err := qb.ensureValidSession(); err != nil {
+			log.Error("qbittorrent", "Failed to re-authenticate after 403 while deleting torrent", map[string]string{"error": err.Error(), "hash": hash})
+			return err
+		}
+
+		// Retry the request
+		resp, err = qb.Client.PostForm(config.GlobalConfig.QBUrl+"/api/v2/torrents/delete",
+			url.Values{"hashes": {hash}, "deleteFiles": {dropFilesString}})
+		if err != nil {
+			log.Error("qbittorrent", "Failed to delete torrent by hash after re-authentication", map[string]string{
+				"hash":  hash,
+				"error": err.Error(),
+			})
+			return err
+		}
+		defer func() { _ = resp.Body.Close() }()
+	}
 
 	if resp.StatusCode != 200 {
 		log.Error("qbittorrent", "Failed to delete torrent, non-200 response", map[string]string{
@@ -295,6 +448,12 @@ func (qb *QbittorrentUser) DeleteTorrent(hash string, dropFiles bool) error {
 
 // DeleteTorrentByName is a method for deleting a torrent by name
 func (qb *QbittorrentUser) DeleteTorrentByName(torrentName string, dropFiles bool) error {
+	// Ensure we have a valid session before making the request
+	if err := qb.ensureValidSession(); err != nil {
+		log.Error("qbittorrent", "Failed to ensure valid session for deleting torrent by name", map[string]string{"error": err.Error(), "name": torrentName})
+		return err
+	}
+
 	log.Info("qbittorrent", "Deleting torrent by name", map[string]string{
 		"name":       torrentName,
 		"drop_files": fmt.Sprintf("%t", dropFiles),
@@ -309,7 +468,36 @@ func (qb *QbittorrentUser) DeleteTorrentByName(torrentName string, dropFiles boo
 		})
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
+
+	// Check if we got a forbidden response (session expired during request)
+	if resp.StatusCode == 403 {
+		log.Info("qbittorrent", "Received 403 Forbidden while getting torrent list for deletion by name, attempting to re-authenticate", map[string]string{"name": torrentName})
+		// Try to re-authenticate and retry the request
+		if err := qb.ensureValidSession(); err != nil {
+			log.Error("qbittorrent", "Failed to re-authenticate after 403 while getting torrent list for deletion by name", map[string]string{"error": err.Error(), "name": torrentName})
+			return err
+		}
+
+		// Retry the request
+		resp, err = qb.Client.Get(config.GlobalConfig.QBUrl + "/api/v2/torrents/info?filter=all")
+		if err != nil {
+			log.Error("qbittorrent", "Failed to get torrent list for deletion by name after re-authentication", map[string]string{
+				"name":  torrentName,
+				"error": err.Error(),
+			})
+			return err
+		}
+		defer func() { _ = resp.Body.Close() }()
+	}
+
+	if resp.StatusCode != 200 {
+		log.Error("qbittorrent", "Failed to get torrent list for deletion by name, non-200 response", map[string]string{
+			"name":        torrentName,
+			"status_code": fmt.Sprintf("%d", resp.StatusCode),
+		})
+		return fmt.Errorf("failed to get torrent list for deletion by name, status: %d", resp.StatusCode)
+	}
 
 	var torrents []Torrent
 	err = json.NewDecoder(resp.Body).Decode(&torrents)
@@ -361,7 +549,30 @@ func (qb *QbittorrentUser) DeleteTorrentByName(torrentName string, dropFiles boo
 		})
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
+
+	// Check if we got a forbidden response (session expired during request)
+	if resp.StatusCode == 403 {
+		log.Info("qbittorrent", "Received 403 Forbidden while deleting torrent by name, attempting to re-authenticate", map[string]string{"name": torrentName, "hash": torrentHash})
+		// Try to re-authenticate and retry the request
+		if err := qb.ensureValidSession(); err != nil {
+			log.Error("qbittorrent", "Failed to re-authenticate after 403 while deleting torrent by name", map[string]string{"error": err.Error(), "name": torrentName, "hash": torrentHash})
+			return err
+		}
+
+		// Retry the request
+		resp, err = qb.Client.PostForm(config.GlobalConfig.QBUrl+"/api/v2/torrents/delete",
+			url.Values{"hashes": {torrentHash}, "deleteFiles": {dropFilesString}})
+		if err != nil {
+			log.Error("qbittorrent", "Failed to delete torrent by name after re-authentication", map[string]string{
+				"name":  torrentName,
+				"hash":  torrentHash,
+				"error": err.Error(),
+			})
+			return err
+		}
+		defer func() { _ = resp.Body.Close() }()
+	}
 
 	if resp.StatusCode != 200 {
 		log.Error("qbittorrent", "Failed to delete torrent by name, non-200 response", map[string]string{
@@ -382,14 +593,52 @@ func (qb *QbittorrentUser) DeleteTorrentByName(torrentName string, dropFiles boo
 }
 
 func (qb *QbittorrentUser) GetDownloadPathByHash(torrentHash string) (string, error) {
-	resp, err := qb.Client.Get(config.GlobalConfig.QBUrl + "/api/v2/torrents/info?filter=all")
-	if err != nil {
+	// Ensure we have a valid session before making the request
+	if err := qb.ensureValidSession(); err != nil {
+		log.Error("qbittorrent", "Failed to ensure valid session for getting download path by hash", map[string]string{"error": err.Error(), "hash": torrentHash})
 		return "", err
 	}
-	defer resp.Body.Close()
+
+	resp, err := qb.Client.Get(config.GlobalConfig.QBUrl + "/api/v2/torrents/info?filter=all")
+	if err != nil {
+		log.Error("qbittorrent", "Failed to get torrent list for download path by hash", map[string]string{"hash": torrentHash, "error": err.Error()})
+		return "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// Check if we got a forbidden response (session expired during request)
+	if resp.StatusCode == 403 {
+		log.Info("qbittorrent", "Received 403 Forbidden while getting download path by hash, attempting to re-authenticate", map[string]string{"hash": torrentHash})
+		// Try to re-authenticate and retry the request
+		if err := qb.ensureValidSession(); err != nil {
+			log.Error("qbittorrent", "Failed to re-authenticate after 403 while getting download path by hash", map[string]string{"error": err.Error(), "hash": torrentHash})
+			return "", err
+		}
+
+		// Retry the request
+		resp, err = qb.Client.Get(config.GlobalConfig.QBUrl + "/api/v2/torrents/info?filter=all")
+		if err != nil {
+			log.Error("qbittorrent", "Failed to get torrent list for download path by hash after re-authentication", map[string]string{
+				"hash":  torrentHash,
+				"error": err.Error(),
+			})
+			return "", err
+		}
+		defer func() { _ = resp.Body.Close() }()
+	}
+
+	if resp.StatusCode != 200 {
+		log.Error("qbittorrent", "Failed to get torrent list for download path by hash, non-200 response", map[string]string{
+			"hash":        torrentHash,
+			"status_code": fmt.Sprintf("%d", resp.StatusCode),
+		})
+		return "", fmt.Errorf("failed to get torrent list for download path by hash, status: %d", resp.StatusCode)
+	}
+
 	var torrents []Torrent
 	err = json.NewDecoder(resp.Body).Decode(&torrents)
 	if err != nil {
+		log.Error("qbittorrent", "Failed to decode torrent list JSON for download path by hash", map[string]string{"hash": torrentHash, "error": err.Error()})
 		return "", err
 	}
 
@@ -408,16 +657,47 @@ func (qb *QbittorrentUser) GetDownloadPathByHash(torrentHash string) (string, er
 
 // GetDownloadPaths is a method for getting a list of download paths from existing torrents
 func (qb *QbittorrentUser) GetDownloadPaths() ([]string, error) {
+	// Ensure we have a valid session before making the request
+	if err := qb.ensureValidSession(); err != nil {
+		log.Error("qbittorrent", "Failed to ensure valid session for getting download paths", map[string]string{"error": err.Error()})
+		return nil, err
+	}
+
 	// Get torrent list
 	resp, err := qb.Client.Get(config.GlobalConfig.QBUrl + "/api/v2/torrents/info?filter=all")
 	if err != nil {
+		log.Error("qbittorrent", "Failed to get torrent list for download paths", map[string]string{"error": err.Error()})
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
+
+	// Check if we got a forbidden response (session expired during request)
+	if resp.StatusCode == 403 {
+		log.Info("qbittorrent", "Received 403 Forbidden while getting download paths, attempting to re-authenticate", nil)
+		// Try to re-authenticate and retry the request
+		if err := qb.ensureValidSession(); err != nil {
+			log.Error("qbittorrent", "Failed to re-authenticate after 403 while getting download paths", map[string]string{"error": err.Error()})
+			return nil, err
+		}
+
+		// Retry the request
+		resp, err = qb.Client.Get(config.GlobalConfig.QBUrl + "/api/v2/torrents/info?filter=all")
+		if err != nil {
+			log.Error("qbittorrent", "Failed to get torrent list for download paths after re-authentication", map[string]string{"error": err.Error()})
+			return nil, err
+		}
+		defer func() { _ = resp.Body.Close() }()
+	}
+
+	if resp.StatusCode != 200 {
+		log.Error("qbittorrent", "Failed to get torrent list for download paths, non-200 response", map[string]string{"status_code": fmt.Sprintf("%d", resp.StatusCode)})
+		return nil, fmt.Errorf("failed to get torrent list for download paths, status: %d", resp.StatusCode)
+	}
 
 	var torrents []Torrent
 	err = json.NewDecoder(resp.Body).Decode(&torrents)
 	if err != nil {
+		log.Error("qbittorrent", "Failed to decode torrent list JSON for download paths", map[string]string{"error": err.Error()})
 		return nil, err
 	}
 
