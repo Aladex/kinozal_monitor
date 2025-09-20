@@ -68,7 +68,9 @@ func (pool *MsgPool) HandleWsConnections(c echo.Context) error {
 	}
 	defer func() {
 		pool.unregister <- ws
-		ws.Close()
+		if closeErr := ws.Close(); closeErr != nil {
+			log.Error("Error closing websocket connection: ", closeErr.Error(), nil)
+		}
 	}()
 
 	pool.register <- ws
@@ -99,7 +101,9 @@ func (pool *MsgPool) Start() {
 				if err := connection.WriteMessage(websocket.TextMessage, []byte(message)); err != nil {
 					log.Error("Error during sending message to connection: ", err.Error(), nil)
 					pool.unregister <- connection
-					connection.Close()
+					if closeErr := connection.Close(); closeErr != nil {
+						log.Error("Error closing connection after write failure: ", closeErr.Error(), nil)
+					}
 					break
 				}
 			}
