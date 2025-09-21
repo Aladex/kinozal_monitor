@@ -194,15 +194,15 @@ func (h *ApiHandler) AddTorrentUrl(c echo.Context) error {
 // RemoveTorrentUrl is a function for removing a torrent by ID
 func RemoveTorrentUrl(c echo.Context) error {
 	// Read JSON from request body
-	var json map[string]string
-	err := c.Bind(&json)
+	var jsonTorrent map[string]string
+	err := c.Bind(&jsonTorrent)
 	if err != nil {
 		// Return 400 Bad Request
 		return c.JSON(400, map[string]string{"error": err.Error()})
 	}
 	// Get torrent name from JSON
-	torrentUrl := json["url"]
-	torrentHash := json["hash"]
+	torrentUrl := jsonTorrent["url"]
+	torrentHash := jsonTorrent["hash"]
 	// Delete torrent from qbittorrent by name
 	err = getQbUser().DeleteTorrent(torrentHash, true)
 	if err != nil {
@@ -244,16 +244,16 @@ func GetDownloadPaths(c echo.Context) error {
 // WatchTorrents is a function for set a watch flag for torrents
 func (h *ApiHandler) WatchTorrent(c echo.Context) error {
 	// Read JSON from request body
-	var json map[string]string
-	err := c.Bind(&json)
+	var jsonTorrent map[string]string
+	err := c.Bind(&jsonTorrent)
 	if err != nil {
 		// Return 400 Bad Request
 		return c.JSON(400, map[string]string{"error": err.Error()})
 	}
 	// Get torrent name from JSON
-	torrentUrl := json["url"]
+	torrentUrl := jsonTorrent["url"]
 	// Get watch period from JSON in minutes
-	watchPeriod := json["watchPeriod"]
+	watchPeriod := jsonTorrent["watchPeriod"]
 	// Convert watch period to int
 	watchPeriodInt, err := strconv.Atoi(watchPeriod)
 	if err != nil {
