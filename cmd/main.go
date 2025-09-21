@@ -28,7 +28,7 @@ func main() {
 		panic("Failed to initialize qBittorrent manager: " + err.Error())
 	}
 
-	wsChan := make(chan string)
+	wsChan := make(chan string, 1000)
 	urlChan := make(chan common.TorrentData, 100)
 
 	e := echo.New()
@@ -48,7 +48,7 @@ func main() {
 	handler := api.NewApiHandler(urlChan)
 	msgPool := api.NewMsgPool(wsChan)
 
-	go qbittorrent.TorrentChecker()
+	go qbittorrent.TorrentChecker(wsChan)
 	go qbittorrent.WsMessageHandler(wsChan, urlChan)
 
 	var contentHandler = echo.WrapHandler(http.FileServer(http.FS(assets.Assets)))

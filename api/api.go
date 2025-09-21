@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"kinozaltv_monitor/common"
 	"kinozaltv_monitor/database"
 	logger "kinozaltv_monitor/logging"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
@@ -98,11 +100,60 @@ func (pool *MsgPool) Start() {
 			pool.connMux.Lock() // Lock when modifying the connections map
 			pool.connections[connection] = true
 			pool.connMux.Unlock() // Unlock after modifying the connections map
+
+			log.Info("websocket_client_connected", "New WebSocket client connected", map[string]string{
+				"total_connections": strconv.Itoa(len(pool.connections)),
+			})
+
+			// Send current state to the new connection
+			currentState := map[string]interface{}{
+				"type": "current_state",
+				"data": GetCheckInfos(),
+			}
+			jsonMsg, err := json.Marshal(currentState)
+			if err != nil {
+				log.Error("Error marshaling current state: ", err.Error(), nil)
+				pool.unregister <- connection
+				continue
+			}
+
+			log.Info("sending_current_state", "Sending current state to new client", map[string]string{
+				"message_size":   strconv.Itoa(len(jsonMsg)),
+				"torrents_count": strconv.Itoa(len(GetCheckInfos())),
+			})
+
+			if err := connection.WriteMessage(websocket.TextMessage, jsonMsg); err != nil {
+				log.Error("Error sending current state to new connection: ", err.Error(), nil)
+				pool.unregister <- connection
+			} else {
+				log.Info("current_state_sent", "Current state successfully sent to new client", nil)
+			}
 		case connection := <-pool.unregister:
 			pool.connMux.Lock() // Lock when modifying the connections map
-			delete(pool.connections, connection)
+			if _, exists := pool.connections[connection]; exists {
+				delete(pool.connections, connection)
+				log.Info("websocket_client_disconnected", "WebSocket client disconnected", map[string]string{
+					"remaining_connections": strconv.Itoa(len(pool.connections)),
+				})
+			}
 			pool.connMux.Unlock() // Unlock after modifying the connections map
 		case message := <-pool.broadcast:
+			pool.connMux.Lock()
+			activeConnections := len(pool.connections)
+			pool.connMux.Unlock()
+
+			if activeConnections > 0 {
+				log.Info("broadcasting_message", "Broadcasting message to clients", map[string]string{
+					"active_connections": strconv.Itoa(activeConnections),
+					"message_preview": func() string {
+						if len(message) > 100 {
+							return message[:100] + "..."
+						}
+						return message
+					}(),
+				})
+			}
+
 			for connection := range pool.connections {
 				if err := connection.WriteMessage(websocket.TextMessage, []byte(message)); err != nil {
 					log.Error("Error during sending message to connection: ", err.Error(), nil)
@@ -218,4 +269,42 @@ func (h *ApiHandler) WatchTorrent(c echo.Context) error {
 	}
 
 	return c.JSON(200, map[string]string{"status": "ok"})
+}
+
+// GetCheckInfos returns the current check information for all torrents
+func GetCheckInfos() map[string]map[string]interface{} {
+	result := make(map[string]map[string]interface{})
+
+	// Get all torrents from database to ensure we have complete information
+	dbTorrents, err := database.GetAllRecords(database.DB)
+	if err != nil {
+		log.Error("get_db_records_for_check_infos", "Error getting database records", map[string]string{"error": err.Error()})
+		return result
+	}
+
+	// For each torrent in database, provide check info (either existing or default)
+	for _, dbTorrent := range dbTorrents {
+		if info, exists := qbittorrent.TorrentCheckInfos[dbTorrent.Url]; exists {
+			// Use existing check info
+			result[dbTorrent.Url] = map[string]interface{}{
+				"last_check_time":    info.LastCheckTime.Format(time.RFC3339),
+				"last_check_success": info.LastCheckSuccess,
+			}
+		} else {
+			// Provide default values for torrents without check info yet
+			defaultTime := time.Now()
+			result[dbTorrent.Url] = map[string]interface{}{
+				"last_check_time":    defaultTime.Format(time.RFC3339),
+				"last_check_success": true, // Assume success initially
+			}
+
+			// Initialize the check info in the global map for future use
+			qbittorrent.TorrentCheckInfos[dbTorrent.Url] = &qbittorrent.TorrentCheckInfo{
+				LastCheckTime:    defaultTime,
+				LastCheckSuccess: true,
+			}
+		}
+	}
+
+	return result
 }

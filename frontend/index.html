@@ -96,6 +96,7 @@
                 this.ws = null;
                 this.torrents = [];
                 this.downloadPaths = [];
+                this.checkInfos = {};
                 this.init();
             }
 
@@ -112,7 +113,6 @@
                     this.downloadPaths = await response.json();
                     this.populateDownloadPaths();
                 } catch (error) {
-                    console.error('Error loading download paths:', error);
                     this.showNotification('Error loading download paths', 'error');
                 }
             }
@@ -134,7 +134,6 @@
                     this.torrents = await response.json();
                     this.renderTorrents();
                 } catch (error) {
-                    console.error('Error loading torrents:', error);
                     this.showNotification('Error loading torrents', 'error');
                 }
             }
@@ -150,7 +149,48 @@
                 }
 
                 emptyState.classList.add('hidden');
-                container.innerHTML = this.torrents.map(torrent => `
+                container.innerHTML = this.torrents.map(torrent => {
+                    const checkInfo = this.checkInfos[torrent.url];
+
+                    // Helper function to safely format date
+                    const formatLastCheckTime = (checkInfo, watchEvery) => {
+                        if (watchEvery === 0) {
+                            return '-';
+                        }
+                        if (!checkInfo || !checkInfo.lastCheckTime) {
+                            return 'Never';
+                        }
+
+                        try {
+                            const date = new Date(checkInfo.lastCheckTime);
+                            // Check if date is valid
+                            if (isNaN(date.getTime())) {
+                                return 'Never';
+                            }
+                            return date.toLocaleString();
+                        } catch (e) {
+                            return 'Never';
+                        }
+                    };
+
+                    // Helper function to safely get status
+                    const getStatus = (checkInfo, watchEvery) => {
+                        if (watchEvery === 0) {
+                            return { text: '-', className: 'status-inactive' };
+                        }
+                        if (!checkInfo || checkInfo.lastCheckSuccess === undefined) {
+                            return { text: 'Unknown', className: 'status-unknown' };
+                        }
+                        return {
+                            text: checkInfo.lastCheckSuccess ? 'Success' : 'Failed',
+                            className: checkInfo.lastCheckSuccess ? 'status-success' : 'status-error'
+                        };
+                    };
+
+                    const lastCheckTime = formatLastCheckTime(checkInfo, torrent.watch_every);
+                    const status = getStatus(checkInfo, torrent.watch_every);
+
+                    return `
                     <div class="torrent-item" data-hash="${torrent.hash}">
                         <div class="torrent-header">
                             <div class="torrent-info">
@@ -161,6 +201,10 @@
                                     🔗 Go to Torrent
                                 </a>
                                 <div class="torrent-hash">${torrent.hash}</div>
+                                <div class="torrent-check-info">
+                                    Last check: ${lastCheckTime}<br>
+                                    Status: <span class="${status.className}">${status.text}</span>
+                                </div>
                             </div>
                             <div class="torrent-controls">
                                 <div class="status-indicator ${torrent.watch_every > 0 ? '' : 'status-inactive'}">
@@ -186,7 +230,8 @@
                             </div>
                         </div>
                     </div>
-                `).join('');
+                    `;
+                }).join('');
             }
 
             setupWebSocket() {
@@ -196,28 +241,48 @@
                 this.ws = new WebSocket(wsUrl);
 
                 this.ws.onopen = () => {
-                    console.log('WebSocket connected');
                 };
 
                 this.ws.onmessage = (event) => {
                     const message = event.data;
-                    console.log('WebSocket message:', message);
 
                     if (message === 'added') {
                         this.showNotification('Torrent successfully added', 'success');
                         this.loadTorrents();
                     } else if (message === '500') {
                         this.showNotification('Error adding torrent', 'error');
+                    } else {
+                        try {
+                            const data = JSON.parse(message);
+
+                            if (data.type === 'check_update') {
+                                this.checkInfos[data.url] = {
+                                    lastCheckTime: data.last_check_time,
+                                    lastCheckSuccess: data.last_check_success
+                                };
+                                this.renderTorrents();
+                            } else if (data.type === 'current_state') {
+                                // Convert the data format from snake_case to camelCase
+                                this.checkInfos = {};
+                                for (const [url, info] of Object.entries(data.data || {})) {
+                                    this.checkInfos[url] = {
+                                        lastCheckTime: info.last_check_time,
+                                        lastCheckSuccess: info.last_check_success
+                                    };
+                                }
+
+                                this.renderTorrents();
+                            }
+                        } catch (e) {
+                        }
                     }
                 };
 
                 this.ws.onclose = () => {
-                    console.log('WebSocket disconnected');
                     setTimeout(() => this.setupWebSocket(), 3000);
                 };
 
                 this.ws.onerror = (error) => {
-                    console.error('WebSocket error:', error);
                 };
             }
 

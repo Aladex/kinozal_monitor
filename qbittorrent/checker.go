@@ -2,6 +2,7 @@ package qbittorrent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"kinozaltv_monitor/common"
 	"kinozaltv_monitor/config"
@@ -20,6 +21,20 @@ type TorrentWatcher struct {
 	cancel     context.CancelFunc
 	watchEvery int
 }
+
+type TorrentCheckInfo struct {
+	LastCheckTime    time.Time
+	LastCheckSuccess bool
+}
+
+type CheckUpdateMessage struct {
+	Type             string `json:"type"`
+	Url              string `json:"url"`
+	LastCheckTime    string `json:"last_check_time"`
+	LastCheckSuccess bool   `json:"last_check_success"`
+}
+
+var TorrentCheckInfos = make(map[string]*TorrentCheckInfo)
 
 // torrentAdder
 func torrentAdder(qbUser *QbittorrentUser, torrentData common.TorrentData, wsMsg chan string) {
@@ -65,6 +80,25 @@ func torrentAdder(qbUser *QbittorrentUser, torrentData common.TorrentData, wsMsg
 		return
 	}
 
+	// Initialize check info for the new torrent
+	checkInfo, exists := TorrentCheckInfos[torrentData.Url]
+	if !exists {
+		checkInfo = &TorrentCheckInfo{}
+		TorrentCheckInfos[torrentData.Url] = checkInfo
+	}
+	checkInfo.LastCheckTime = time.Now()
+	checkInfo.LastCheckSuccess = true // Torrent added successfully
+
+	// Send WebSocket message for check update
+	msg := CheckUpdateMessage{
+		Type:             "check_update",
+		Url:              torrentData.Url,
+		LastCheckTime:    checkInfo.LastCheckTime.Format(time.RFC3339),
+		LastCheckSuccess: checkInfo.LastCheckSuccess,
+	}
+	jsonMsg, _ := json.Marshal(msg)
+	wsMsg <- string(jsonMsg)
+
 	for _, hash := range torrentHashList {
 		if hash.Hash == torrentInfo.Hash {
 			// Torrent already exists in qbittorrent
@@ -94,7 +128,7 @@ func torrentAdder(qbUser *QbittorrentUser, torrentData common.TorrentData, wsMsg
 	}()
 }
 
-func torrentWorker(ctx context.Context, dbTorrent database.Torrent) {
+func torrentWorker(ctx context.Context, dbTorrent database.Torrent, wsChan chan string) {
 	log.Info("info", "Torrent worker started", map[string]string{
 		"torrent_url":  dbTorrent.Url,
 		"torrent_hash": dbTorrent.Hash,
@@ -102,7 +136,7 @@ func torrentWorker(ctx context.Context, dbTorrent database.Torrent) {
 	})
 
 	// Check torrent
-	updatedTorrent, err := torrentChecker(dbTorrent)
+	updatedTorrent, err := torrentChecker(dbTorrent, wsChan)
 	if err != nil {
 		log.Error("torrent_checker", err.Error(), nil)
 	} else {
@@ -118,7 +152,7 @@ func torrentWorker(ctx context.Context, dbTorrent database.Torrent) {
 		select {
 		case <-ticker.C:
 			// Check torrent
-			updatedTorrent, err := torrentChecker(dbTorrent)
+			updatedTorrent, err := torrentChecker(dbTorrent, wsChan)
 			if err != nil {
 				log.Error("torrent_checker", err.Error(), nil)
 			} else {
@@ -136,12 +170,27 @@ func torrentWorker(ctx context.Context, dbTorrent database.Torrent) {
 	}
 }
 
-func torrentChecker(dbTorrent database.Torrent) (database.Torrent, error) {
+func torrentChecker(dbTorrent database.Torrent, wsChan chan string) (database.Torrent, error) {
 	// Get torrent list from qbittorrent
 	qbTorrents, err := GlobalManager.User.GetTorrentHashList()
 	if err != nil {
 		log.Error("get_qb_torrents", err.Error(), nil)
 		handleQbittorrentError(err)
+		checkInfo, exists := TorrentCheckInfos[dbTorrent.Url]
+		if !exists {
+			checkInfo = &TorrentCheckInfo{}
+			TorrentCheckInfos[dbTorrent.Url] = checkInfo
+		}
+		checkInfo.LastCheckTime = time.Now()
+		checkInfo.LastCheckSuccess = false
+		msg := CheckUpdateMessage{
+			Type:             "check_update",
+			Url:              dbTorrent.Url,
+			LastCheckTime:    checkInfo.LastCheckTime.Format(time.RFC3339),
+			LastCheckSuccess: checkInfo.LastCheckSuccess,
+		}
+		jsonMsg, _ := json.Marshal(msg)
+		wsChan <- string(jsonMsg)
 		return dbTorrent, err
 	}
 
@@ -160,6 +209,21 @@ func torrentChecker(dbTorrent database.Torrent) (database.Torrent, error) {
 			"torrent_hash": dbTorrent.Hash,
 		})
 		if !addTorrentToQbittorrent(qbTorrent, true) {
+			checkInfo, exists := TorrentCheckInfos[dbTorrent.Url]
+			if !exists {
+				checkInfo = &TorrentCheckInfo{}
+				TorrentCheckInfos[dbTorrent.Url] = checkInfo
+			}
+			checkInfo.LastCheckTime = time.Now()
+			checkInfo.LastCheckSuccess = false
+			msg := CheckUpdateMessage{
+				Type:             "check_update",
+				Url:              dbTorrent.Url,
+				LastCheckTime:    checkInfo.LastCheckTime.Format(time.RFC3339),
+				LastCheckSuccess: checkInfo.LastCheckSuccess,
+			}
+			jsonMsg, _ := json.Marshal(msg)
+			wsChan <- string(jsonMsg)
 			return dbTorrent, fmt.Errorf("torrent not added to qbittorrent")
 		}
 	} else {
@@ -167,6 +231,21 @@ func torrentChecker(dbTorrent database.Torrent) (database.Torrent, error) {
 		tracker, err := models.GlobalTrackerManager.GetTrackerByURL(dbTorrent.Url)
 		if err != nil {
 			log.Error("get_tracker", "Error while getting tracker for URL", map[string]string{"error": err.Error(), "url": dbTorrent.Url})
+			checkInfo, exists := TorrentCheckInfos[dbTorrent.Url]
+			if !exists {
+				checkInfo = &TorrentCheckInfo{}
+				TorrentCheckInfos[dbTorrent.Url] = checkInfo
+			}
+			checkInfo.LastCheckTime = time.Now()
+			checkInfo.LastCheckSuccess = false
+			msg := CheckUpdateMessage{
+				Type:             "check_update",
+				Url:              dbTorrent.Url,
+				LastCheckTime:    checkInfo.LastCheckTime.Format(time.RFC3339),
+				LastCheckSuccess: checkInfo.LastCheckSuccess,
+			}
+			jsonMsg, _ := json.Marshal(msg)
+			wsChan <- string(jsonMsg)
 			return dbTorrent, err
 		}
 
@@ -179,6 +258,21 @@ func torrentChecker(dbTorrent database.Torrent) (database.Torrent, error) {
 		torrentInfo, err := tracker.GetTorrentHash(dbTorrent.Url)
 		if err != nil {
 			log.Error("get_torrent_info", "Error while getting torrent info from tracker", map[string]string{"error": err.Error()})
+			checkInfo, exists := TorrentCheckInfos[dbTorrent.Url]
+			if !exists {
+				checkInfo = &TorrentCheckInfo{}
+				TorrentCheckInfos[dbTorrent.Url] = checkInfo
+			}
+			checkInfo.LastCheckTime = time.Now()
+			checkInfo.LastCheckSuccess = false
+			msg := CheckUpdateMessage{
+				Type:             "check_update",
+				Url:              dbTorrent.Url,
+				LastCheckTime:    checkInfo.LastCheckTime.Format(time.RFC3339),
+				LastCheckSuccess: checkInfo.LastCheckSuccess,
+			}
+			jsonMsg, _ := json.Marshal(msg)
+			wsChan <- string(jsonMsg)
 			return dbTorrent, err
 		}
 
@@ -215,6 +309,21 @@ func torrentChecker(dbTorrent database.Torrent) (database.Torrent, error) {
 					"old_hash":    dbTorrent.Hash,
 					"new_hash":    torrentInfo.Hash,
 				})
+				checkInfo, exists := TorrentCheckInfos[dbTorrent.Url]
+				if !exists {
+					checkInfo = &TorrentCheckInfo{}
+					TorrentCheckInfos[dbTorrent.Url] = checkInfo
+				}
+				checkInfo.LastCheckTime = time.Now()
+				checkInfo.LastCheckSuccess = false
+				msg := CheckUpdateMessage{
+					Type:             "check_update",
+					Url:              dbTorrent.Url,
+					LastCheckTime:    checkInfo.LastCheckTime.Format(time.RFC3339),
+					LastCheckSuccess: checkInfo.LastCheckSuccess,
+				}
+				jsonMsg, _ := json.Marshal(msg)
+				wsChan <- string(jsonMsg)
 				return dbTorrent, fmt.Errorf("torrent not updated in qbittorrent")
 			}
 
@@ -236,11 +345,26 @@ func torrentChecker(dbTorrent database.Torrent) (database.Torrent, error) {
 		}
 	}
 
+	checkInfo, exists := TorrentCheckInfos[dbTorrent.Url]
+	if !exists {
+		checkInfo = &TorrentCheckInfo{}
+		TorrentCheckInfos[dbTorrent.Url] = checkInfo
+	}
+	checkInfo.LastCheckTime = time.Now()
+	checkInfo.LastCheckSuccess = true
+	msg := CheckUpdateMessage{
+		Type:             "check_update",
+		Url:              dbTorrent.Url,
+		LastCheckTime:    checkInfo.LastCheckTime.Format(time.RFC3339),
+		LastCheckSuccess: checkInfo.LastCheckSuccess,
+	}
+	jsonMsg, _ := json.Marshal(msg)
+	wsChan <- string(jsonMsg)
 	return dbTorrent, nil
 }
 
 // createOrUpdateWatcher creates or updates watcher for torrent
-func createOrUpdateWatcher(dbTorrent database.Torrent, torrentWatchers map[int]*TorrentWatcher) {
+func createOrUpdateWatcher(dbTorrent database.Torrent, torrentWatchers map[int]*TorrentWatcher, wsChan chan string) {
 	// Create context for watcher
 	ctx, cancel := context.WithCancel(context.Background())
 	// Create or update watcher
@@ -248,7 +372,7 @@ func createOrUpdateWatcher(dbTorrent database.Torrent, torrentWatchers map[int]*
 		cancel:     cancel,
 		watchEvery: dbTorrent.WatchEvery,
 	}
-	go torrentWorker(ctx, dbTorrent)
+	go torrentWorker(ctx, dbTorrent, wsChan)
 	log.Info("info", "Torrent watcher created or updated", map[string]string{
 		"torrent_url":  dbTorrent.Url,
 		"torrent_hash": dbTorrent.Hash,
@@ -285,11 +409,34 @@ func deleteRemovedTorrents(dbTorrents []database.Torrent, torrentWatchers map[in
 }
 
 // TorrentChecker checks torrents in database and qbittorrent
-func TorrentChecker() {
+func TorrentChecker(wsChan chan string) {
 	log.Info("info", "Checker started", nil)
+
 	// Get torrent list from database every 5 minutes
 	// And create watcher for every torrent if it has watch interval
 	torrentWatchers := make(map[int]*TorrentWatcher)
+
+	// Initialize check info for existing torrents at startup
+	dbTorrents, err := database.GetAllRecords(database.DB)
+	if err != nil {
+		log.Error("get_db_records_initial", err.Error(), nil)
+		return
+	}
+
+	// Initialize check info for all existing torrents with proper default values
+	// No need to send initial messages here - WebSocket pool handles this when clients connect
+	for _, dbTorrent := range dbTorrents {
+		if _, exists := TorrentCheckInfos[dbTorrent.Url]; !exists {
+			checkInfo := &TorrentCheckInfo{
+				LastCheckTime:    time.Now(),
+				LastCheckSuccess: true, // Assume success for existing torrents initially
+			}
+			TorrentCheckInfos[dbTorrent.Url] = checkInfo
+			log.Info("info", "Initialized check info for existing torrent", map[string]string{
+				"torrent_url": dbTorrent.Url,
+			})
+		}
+	}
 
 	for {
 		// Get torrent list from database
@@ -297,6 +444,20 @@ func TorrentChecker() {
 		if err != nil {
 			log.Error("get_db_records", err.Error(), nil)
 			return
+		}
+
+		// Initialize check info for any new torrents that might have been added
+		for _, dbTorrent := range dbTorrents {
+			if _, exists := TorrentCheckInfos[dbTorrent.Url]; !exists {
+				checkInfo := &TorrentCheckInfo{
+					LastCheckTime:    time.Now(),
+					LastCheckSuccess: true, // Assume success for new torrents initially
+				}
+				TorrentCheckInfos[dbTorrent.Url] = checkInfo
+				log.Info("info", "Initialized check info for new torrent", map[string]string{
+					"torrent_url": dbTorrent.Url,
+				})
+			}
 		}
 
 		// Delete removed torrents
@@ -319,11 +480,11 @@ func TorrentChecker() {
 								"torrent_hash": dbTorrent.Hash,
 							})
 						} else {
-							createOrUpdateWatcher(dbTorrent, torrentWatchers)
+							createOrUpdateWatcher(dbTorrent, torrentWatchers, wsChan)
 						}
 					}
 				} else {
-					createOrUpdateWatcher(dbTorrent, torrentWatchers)
+					createOrUpdateWatcher(dbTorrent, torrentWatchers, wsChan)
 				}
 			}
 		}
@@ -336,7 +497,7 @@ func TorrentChecker() {
 func WsMessageHandler(wsMsg chan string, torrentData chan common.TorrentData) {
 	log.Info("info", "Websocket handler started", nil)
 	for torrentUrl := range torrentData {
-		log.Info("info", "URL received", map[string]string{
+		log.Info("info", "URL received for adding", map[string]string{
 			"torrent_url": torrentUrl.Url,
 		})
 		go torrentAdder(GlobalManager.User, torrentUrl, wsMsg)
