@@ -10,6 +10,7 @@ import (
 	"kinozaltv_monitor/models"
 	"kinozaltv_monitor/qbittorrent"
 	"net/http"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -74,8 +75,9 @@ func main() {
 	// Create HTTP server manually to avoid Echo's automatic logging
 	serverAddr := ":" + globalConfig.ListenPort
 	server := &http.Server{
-		Addr:    serverAddr,
-		Handler: e,
+		Addr:              serverAddr,
+		Handler:           e,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	// Log server start with our custom logger
