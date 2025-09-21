@@ -5,6 +5,7 @@ import (
 	"kinozaltv_monitor/api"
 	"kinozaltv_monitor/common"
 	"kinozaltv_monitor/config"
+	logger "kinozaltv_monitor/logging"
 	customMiddleware "kinozaltv_monitor/middleware"
 	"kinozaltv_monitor/models"
 	"kinozaltv_monitor/qbittorrent"
@@ -19,6 +20,12 @@ var globalConfig = config.GlobalConfig
 func main() {
 	// Initialize the tracker manager with all available trackers
 	models.InitializeTrackers(globalConfig)
+
+	// Initialize qBittorrent manager
+	err := qbittorrent.InitializeManager(globalConfig.QBUsername, globalConfig.QBPassword)
+	if err != nil {
+		panic("Failed to initialize qBittorrent manager: " + err.Error())
+	}
 
 	wsChan := make(chan string)
 	urlChan := make(chan common.TorrentData, 100)
@@ -60,5 +67,29 @@ func main() {
 	e.GET("/ws", msgPool.HandleWsConnections)
 	// Run ws pool
 	go msgPool.Start()
-	e.Logger.Fatal(e.Start(":" + globalConfig.ListenPort))
+
+	// Initialize our custom logger
+	log := logger.New("http_server")
+
+	// Create HTTP server manually to avoid Echo's automatic logging
+	serverAddr := ":" + globalConfig.ListenPort
+	server := &http.Server{
+		Addr:    serverAddr,
+		Handler: e,
+	}
+
+	// Log server start with our custom logger
+	log.Info("server_start", "HTTP server started", map[string]string{
+		"address": serverAddr,
+		"port":    globalConfig.ListenPort,
+	})
+
+	// Start server and log fatal errors with our logger
+	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Error("server_error", "HTTP server failed to start", map[string]string{
+			"error":   err.Error(),
+			"address": serverAddr,
+		})
+		panic("HTTP server failed to start: " + err.Error())
+	}
 }

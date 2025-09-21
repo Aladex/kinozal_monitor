@@ -22,7 +22,7 @@ type TorrentWatcher struct {
 }
 
 // torrentAdder
-func torrentAdder(torrentData common.TorrentData, wsMsg chan string) {
+func torrentAdder(qbUser *QbittorrentUser, torrentData common.TorrentData, wsMsg chan string) {
 	// Get the appropriate tracker based on URL
 	tracker, err := models.GlobalTrackerManager.GetTrackerByURL(torrentData.Url)
 	if err != nil {
@@ -39,7 +39,7 @@ func torrentAdder(torrentData common.TorrentData, wsMsg chan string) {
 		return
 	}
 	// Check if torrent exists in qbittorrent
-	torrentHashList, err := GlobalQbittorrentUser.GetTorrentHashList()
+	torrentHashList, err := qbUser.GetTorrentHashList()
 	if err != nil {
 		log.Error("get_qb_torrents", err.Error(), nil)
 		wsMsg <- "500"
@@ -138,7 +138,7 @@ func torrentWorker(ctx context.Context, dbTorrent database.Torrent) {
 
 func torrentChecker(dbTorrent database.Torrent) (database.Torrent, error) {
 	// Get torrent list from qbittorrent
-	qbTorrents, err := GlobalQbittorrentUser.GetTorrentHashList()
+	qbTorrents, err := GlobalManager.User.GetTorrentHashList()
 	if err != nil {
 		log.Error("get_qb_torrents", err.Error(), nil)
 		handleQbittorrentError(err)
@@ -202,7 +202,7 @@ func torrentChecker(dbTorrent database.Torrent) (database.Torrent, error) {
 			torrentInfo.Url = dbTorrent.Url
 
 			// Get current save path before deletion
-			savePath, err := GlobalQbittorrentUser.GetDownloadPathByHash(dbTorrent.Hash)
+			savePath, err := GlobalManager.User.GetDownloadPathByHash(dbTorrent.Hash)
 			if err != nil {
 				log.Error("get_download_path", "Error getting download path, using default", map[string]string{"error": err.Error()})
 				savePath = "/downloads" // fallback path
@@ -339,18 +339,23 @@ func WsMessageHandler(wsMsg chan string, torrentData chan common.TorrentData) {
 		log.Info("info", "URL received", map[string]string{
 			"torrent_url": torrentUrl.Url,
 		})
-		go torrentAdder(torrentUrl, wsMsg)
+		go torrentAdder(GlobalManager.User, torrentUrl, wsMsg)
 	}
 }
 
 func handleQbittorrentError(err error) {
+	if GlobalManager == nil || GlobalManager.User == nil {
+		log.Error("qbittorrent_error", "GlobalManager is not initialized", map[string]string{"error": err.Error()})
+		return
+	}
+
 	if err.Error() == "Forbidden" {
-		err = GlobalQbittorrentUser.DropLoginSession()
+		err = GlobalManager.User.DropLoginSession()
 		if err != nil {
 			log.Error("drop_login_session", err.Error(), nil)
 		}
 
-		err = GlobalQbittorrentUser.Login()
+		err = GlobalManager.User.Login()
 		if err != nil {
 			log.Error("qbittorrent_login", err.Error(), nil)
 		}
@@ -383,13 +388,13 @@ func kinozalAction(dbTorrent Torrent) (models.Torrent, error) {
 		})
 
 		// Add torrent by magnet link
-		addErr := GlobalQbittorrentUser.AddTorrentByMagnet(dbTorrent.Hash, dbTorrent.SavePath)
+		addErr := GlobalManager.User.AddTorrentByMagnet(dbTorrent.Hash, dbTorrent.SavePath)
 		if addErr != nil {
 			log.Error("add_torrent_by_magnet", "Error adding torrent by magnet link", map[string]string{"error": addErr.Error()})
 			return models.Torrent{}, addErr
 		}
 	} else {
-		addErr := GlobalQbittorrentUser.AddTorrent(dbTorrent.Hash, dbTorrent.SavePath, torrentFile)
+		addErr := GlobalManager.User.AddTorrent(dbTorrent.Hash, dbTorrent.SavePath, torrentFile)
 		if addErr != nil {
 			log.Error("add_torrent", "Error adding torrent", map[string]string{"error": addErr.Error()})
 			return models.Torrent{}, addErr
@@ -462,7 +467,7 @@ func addTorrentToQbittorrent(dbTorrent Torrent, sendTgMessage bool) bool {
 		}
 
 		// Add the torrent to qBittorrent using the downloaded file
-		addErr := GlobalQbittorrentUser.AddTorrent(dbTorrent.Hash, dbTorrent.SavePath, torrentData)
+		addErr := GlobalManager.User.AddTorrent(dbTorrent.Hash, dbTorrent.SavePath, torrentData)
 		if addErr != nil {
 			log.Error("add_torrent", "Error adding torrent", map[string]string{"error": addErr.Error()})
 			return false
@@ -492,7 +497,7 @@ func updateTorrentInQbittorrent(dbTorrent Torrent, torrentInfo models.Torrent) b
 	})
 
 	// Find save path of torrent before deletion
-	savePath, err := GlobalQbittorrentUser.GetDownloadPathByHash(dbTorrent.Hash)
+	savePath, err := GlobalManager.User.GetDownloadPathByHash(dbTorrent.Hash)
 	if err != nil {
 		log.Error("get_download_path", "Error getting download path for torrent", map[string]string{
 			"error":        err.Error(),
@@ -508,7 +513,7 @@ func updateTorrentInQbittorrent(dbTorrent Torrent, torrentInfo models.Torrent) b
 	dbTorrent.SavePath = savePath
 
 	// Delete old torrent from qBittorrent (keep files)
-	err = GlobalQbittorrentUser.DeleteTorrent(dbTorrent.Hash, false)
+	err = GlobalManager.User.DeleteTorrent(dbTorrent.Hash, false)
 	if err != nil {
 		log.Error("delete_torrent", "Error deleting old torrent from qBittorrent", map[string]string{
 			"error":        err.Error(),

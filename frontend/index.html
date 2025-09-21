@@ -324,15 +324,14 @@
             decreaseInterval(inputId) {
                 const input = document.getElementById(inputId);
                 const currentValue = parseInt(input.value) || 0;
-                if (currentValue > 0) {
-                    input.value = currentValue - 1;
-                }
+                const newValue = Math.max(0, currentValue - 10);
+                input.value = newValue;
             }
 
             increaseInterval(inputId) {
                 const input = document.getElementById(inputId);
                 const currentValue = parseInt(input.value) || 0;
-                input.value = currentValue + 1;
+                input.value = currentValue + 10;
             }
 
             async updateWatchInterval(url, inputId) {

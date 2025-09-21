@@ -9,9 +9,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
-	"os"
 	"sort"
-	"strings"
 	"sync"
 
 	"kinozaltv_monitor/config"
@@ -25,7 +23,40 @@ type QbittorrentUser struct {
 	mutex    sync.Mutex // Add mutex for thread-safe operations
 }
 
-var GlobalQbittorrentUser *QbittorrentUser
+// NewQbittorrentUser creates a new QbittorrentUser instance
+func NewQbittorrentUser(username, password string) *QbittorrentUser {
+	return &QbittorrentUser{
+		Username: username,
+		Password: password,
+	}
+}
+
+// Manager holds a qBittorrent user instance
+type Manager struct {
+	User *QbittorrentUser
+}
+
+// NewManager creates a new qBittorrent manager
+func NewManager(username, password string) *Manager {
+	user := NewQbittorrentUser(username, password)
+	return &Manager{
+		User: user,
+	}
+}
+
+// Initialize initializes the qBittorrent connection
+func (m *Manager) Initialize() error {
+	return m.User.Login()
+}
+
+// Global manager instance
+var GlobalManager *Manager
+
+// InitializeManager initializes the global qBittorrent manager
+func InitializeManager(username, password string) error {
+	GlobalManager = NewManager(username, password)
+	return GlobalManager.Initialize()
+}
 
 // Torrent is a struct for storing torrent data
 type Torrent struct {
@@ -91,7 +122,13 @@ func (qb *QbittorrentUser) login() error {
 	}
 
 	// Check if cookies are set
-	cookies := qb.Client.Jar.Cookies(&url.URL{Scheme: "https", Host: strings.TrimPrefix(config.GlobalConfig.QBUrl, "https://")})
+	serverURL, err := url.Parse(config.GlobalConfig.QBUrl)
+	if err != nil {
+		log.Error("qbittorrent", "Error parsing QB URL for cookie check", map[string]string{"error": err.Error()})
+		return err
+	}
+
+	cookies := qb.Client.Jar.Cookies(serverURL)
 	if len(cookies) == 0 {
 		log.Error("qbittorrent", "No cookies received after login", nil)
 		return fmt.Errorf("no cookies received after login")
@@ -112,7 +149,9 @@ func (qb *QbittorrentUser) Login() error {
 // DropLoginSession is a method for dropping the login session by deleting the cookie
 func (qb *QbittorrentUser) DropLoginSession() error {
 	// Drop login session
-	qb.Client.Jar = nil
+	if qb.Client != nil {
+		qb.Client.Jar = nil
+	}
 
 	return nil
 }
@@ -730,18 +769,4 @@ func (qb *QbittorrentUser) GetDownloadPaths() ([]string, error) {
 	}
 
 	return sortedPaths, nil
-}
-
-func init() {
-	// Initialize user
-	GlobalQbittorrentUser = &QbittorrentUser{
-		Username: config.GlobalConfig.QBUsername,
-		Password: config.GlobalConfig.QBPassword,
-	}
-
-	err := GlobalQbittorrentUser.Login()
-	if err != nil {
-		log.Error("qbittorrent", "Failed to login to qbittorrent", nil)
-		os.Exit(1)
-	}
 }

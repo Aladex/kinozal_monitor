@@ -1,8 +1,6 @@
 package api
 
 import (
-	"github.com/gorilla/websocket"
-	"github.com/labstack/echo/v4"
 	"kinozaltv_monitor/common"
 	"kinozaltv_monitor/database"
 	logger "kinozaltv_monitor/logging"
@@ -10,6 +8,9 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+
+	"github.com/gorilla/websocket"
+	"github.com/labstack/echo/v4"
 )
 
 type QbittorrentUser interface {
@@ -17,8 +18,13 @@ type QbittorrentUser interface {
 	GetDownloadPaths() ([]string, error)
 }
 
-// qbUser is a global variable for storing qbittorrent user data
-var qbUser = qbittorrent.GlobalQbittorrentUser
+// getQbUser returns the qbittorrent user instance
+func getQbUser() QbittorrentUser {
+	if qbittorrent.GlobalManager == nil {
+		panic("qbittorrent GlobalManager not initialized")
+	}
+	return qbittorrent.GlobalManager.User
+}
 
 var log = logger.New("api")
 
@@ -147,7 +153,7 @@ func RemoveTorrentUrl(c echo.Context) error {
 	torrentUrl := json["url"]
 	torrentHash := json["hash"]
 	// Delete torrent from qbittorrent by name
-	err = qbUser.DeleteTorrent(torrentHash, true)
+	err = getQbUser().DeleteTorrent(torrentHash, true)
 	if err != nil {
 		// Return 500 Internal Server Error
 		return c.JSON(500, map[string]string{"error": err.Error()})
@@ -175,7 +181,7 @@ func GetTorrentList(c echo.Context) error {
 
 // GetDownloadPaths is a function for getting a list of download paths from qbittorrent
 func GetDownloadPaths(c echo.Context) error {
-	paths, err := qbUser.GetDownloadPaths()
+	paths, err := getQbUser().GetDownloadPaths()
 	if err != nil {
 		// Return 500 Internal Server Error
 		return c.JSON(500, map[string]string{"error": err.Error()})
